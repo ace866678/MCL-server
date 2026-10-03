@@ -1,0 +1,60 @@
+# systemd unit for the Minecraft server.
+#
+# Install:
+#   sudo useradd --system --create-home --home-dir /opt/minecraft --shell /usr/sbin/nologin minecraft
+#   sudo cp -r . /opt/minecraft
+#   sudo chown -R minecraft:minecraft /opt/minecraft
+#   sudo cp systemd/minecraft.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now minecraft
+#
+# Then: journalctl -u minecraft -f, and stop it with `mc stop` rather than
+# `systemctl stop` when you want the shutdown to be explicit.
+
+[Unit]
+Description=Minecraft server (Paper + Geyser/Floodgate cross-play)
+Documentation=file:/opt/minecraft/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=minecraft
+Group=minecraft
+WorkingDirectory=/opt/minecraft
+
+ExecStart=/opt/minecraft/mc start
+
+# `systemctl reload minecraft` asks Paper to reload plugins and config in place.
+# For a full restart that keeps the world: `mc restart` -- do not map it here, or
+# a reload would silently take the server down.
+ExecReload=/opt/minecraft/mc console reload
+
+# `mc` traps SIGTERM and turns it into a console `stop`, so the world is saved.
+# KillMode=mixed is what makes that work: SIGTERM goes to `mc` alone, and the
+# SIGKILL fallback only applies once TimeoutStopSec has elapsed.
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=180
+
+Restart=on-failure
+RestartSec=30
+
+# The server is network-facing, so keep the blast radius small.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# A busy server holds a lot of file handles open.
+LimitNOFILE=65536
+
+# Uncomment to cap the heap independently of VERSION's MIN_MEMORY/MAX_MEMORY.
+#MemoryMax=6G
+
+[Install]
+WantedBy=multi-user.target

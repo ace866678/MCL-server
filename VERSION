@@ -1,0 +1,31 @@
+# Pinned versions for the Minecraft server.
+#
+# This file is the single source of truth. `mc install` downloads exactly what is
+# pinned here and refuses to run a jar whose SHA-256 does not match. `mc update`
+# rewrites the pins when a newer build is published.
+#
+# Every download URL is derived from these values, so nothing here is a URL to rot.
+
+# ---- Paper (Java edition server core) ---------------------------------------
+# 26.3 is currently beta-only, so 26.2 build 129 (channel STABLE) is the pin.
+MINECRAFT_VERSION=26.2
+PAPER_BUILD=129
+PAPER_SHA256=b1d8f6bfa1b6101fa8e947b53041cb3bdf5540e7b83b6547ca19ba7edefeb083
+
+# ---- Geyser (lets Bedrock clients in) ---------------------------------------
+GEYSER_VERSION=2.11.3
+GEYSER_BUILD=1247
+GEYSER_SHA256=6fed2d9711e2db3c365508ec10db36d06a0199abd226159d23d57f82662fd7a6
+
+# ---- Floodgate (the Bedrock login half of cross-play) -----------------------
+FLOODGATE_VERSION=2.2.5
+FLOODGATE_BUILD=141
+FLOODGATE_SHA256=21570aff9ce17d6983928e8552777760e1ede5050026b04c686b0ae112e6fd7e
+
+# ---- Runtime ----------------------------------------------------------------
+# Paper 26.1 and newer require Java 25 or newer.
+JAVA_MAJOR=25
+
+# Heap sizing. Override with MC_MIN_MEMORY / MC_MAX_MEMORY in server.env.
+MIN_MEMORY=4G
+MAX_MEMORY=4G

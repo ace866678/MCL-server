@@ -1,0 +1,12 @@
+# Runtime state lives in volumes, never in the image.
+server/
+backups/
+server.env
+
+# The status web app builds on Vercel, and the bridge only runs on the VM.
+web/
+bridge/
+
+.git
+.gitignore
+*.log

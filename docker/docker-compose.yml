@@ -1,0 +1,58 @@
+# Docker Compose deployment for the cross-play Minecraft server.
+#
+#   cd docker
+#   docker compose build
+#   docker compose run --rm minecraft ./mc install
+#
+# The first `install` seeds server/eula.txt from config/eula.txt and stops,
+# because the EULA ships with eula=false. Read https://aka.ms/MinecraftEULA,
+# set eula=true in docker/server/eula.txt, then:
+#
+#   docker compose up -d
+#   docker compose logs -f
+#
+# Worlds and player data live in ./server on the host, so they survive image
+# rebuilds. To move to another machine, copy that directory across.
+#
+# Both bind mounts are created by Docker owned by root on first run; the
+# entrypoint chowns them to `minecraft` before dropping privileges, so there is
+# nothing to prepare on the host beforehand.
+
+services:
+  minecraft:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: minecraft-crossplay:latest
+    container_name: minecraft
+    restart: unless-stopped
+
+    ports:
+      - "25565:25565/tcp"   # Java clients
+      - "19132:19132/udp"   # Bedrock clients (Geyser)
+
+    volumes:
+      - ./server:/srv/minecraft/server
+      - ./backups:/srv/minecraft/backups
+
+    environment:
+      MC_USER: minecraft
+      MC_SERVER_DIR: /srv/minecraft/server
+      MC_BACKUP_DIR: /srv/minecraft/backups
+
+    # The JVM sizes its heap from what the kernel reports, which inside a
+    # container is the limit. Keep this comfortably above MAX_MEMORY in VERSION.
+    mem_limit: 6g
+
+    # Give the world time to save on `docker compose stop`.
+    stop_grace_period: 2m
+
+    # gosu so the probe still runs unprivileged even though the image starts as
+    # root for the entrypoint's chown step. `mc status` exits 3 when stopped,
+    # which Docker counts as unhealthy.
+    healthcheck:
+      test: ["CMD", "gosu", "minecraft", "/srv/minecraft/mc", "status"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 5m

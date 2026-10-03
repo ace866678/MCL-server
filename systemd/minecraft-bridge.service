@@ -1,0 +1,44 @@
+# systemd unit for the HTTP bridge that the Vercel status page talks to.
+#
+# Installed by `mc deploy`. The bridge needs no network exposure of its own:
+# it binds to 127.0.0.1 and is reached through a tunnel, so 25575 (RCON) and
+# 8787 (the bridge) stay off the public internet.
+
+[Unit]
+Description=Minecraft HTTP bridge (status and player list for the web app)
+Documentation=file:/opt/minecraft/README.md
+After=network-online.target minecraft.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=minecraft
+Group=minecraft
+WorkingDirectory=/opt/minecraft
+
+EnvironmentFile=/etc/minecraft-bridge.env
+Environment=MC_SERVER_DIR=/opt/minecraft/server \
+            MC_REPO_ROOT=/opt/minecraft \
+            MC_BIN=/opt/minecraft/mc \
+            MC_VERSION_FILE=/opt/minecraft/VERSION \
+            BRIDGE_HOST=127.0.0.1 \
+            BRIDGE_PORT=8787
+ExecStart=/usr/bin/python3 /opt/minecraft/bridge/bridge.py
+
+Restart=always
+RestartSec=5
+# The bridge has no state worth keeping; never restart forever if it is broken.
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+{
+  "name": "cloud-vm",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix web run dev",
+    "build": "npm --prefix web run build",
+    "typecheck": "npm --prefix web run typecheck"
+  }
+}

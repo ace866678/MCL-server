@@ -1,0 +1,7 @@
+# By changing this file to true you are agreeing to the Minecraft EULA:
+#   https://aka.ms/MinecraftEULA
+#
+# `mc install` refuses to continue while this is false, on purpose — that
+# acceptance has to be yours, not the script's. Flip it to true once you have
+# read the EULA.
+eula=false

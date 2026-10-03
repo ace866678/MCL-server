@@ -1,0 +1,21 @@
+# Runtime server directory: worlds, player data, logs, generated configs.
+/server/
+
+# Backups produced by `mc backup`.
+/backups/
+
+# Local overrides for heap size and JVM flags. Never commit this — it is
+# per-machine.
+/server.env
+
+# Console FIFO and pid file, both live inside /server but are called out here
+# so an accidental `git add -f` is obvious.
+*.pid
+*.fifo
+
+*.log
+.DS_Store
+
+# Python bytecode from running the bridge and its tests on this machine.
+__pycache__/
+*.py[cod]
