@@ -4,12 +4,18 @@
 # ---- paths ------------------------------------------------------------------
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONFIG_DIR="$REPO_ROOT/config"
-VERSION_FILE="$REPO_ROOT/VERSION"
+CONFIG_DIR="${MC_CONFIG_DIR:-$REPO_ROOT/config}"
+
+# One pin file per server. The repository default keeps `mc` working standalone;
+# the agent points MC_VERSION_FILE at a generated file inside each server
+# directory so several servers on one machine can run different Minecraft
+# versions without sharing pins.
+VERSION_FILE="${MC_VERSION_FILE:-$REPO_ROOT/VERSION}"
+
 SERVER_DIR="${MC_SERVER_DIR:-$REPO_ROOT/server}"
 PLUGINS_DIR="$SERVER_DIR/plugins"
 BACKUP_DIR="${MC_BACKUP_DIR:-$REPO_ROOT/backups}"
-LOCAL_ENV="$REPO_ROOT/server.env"
+LOCAL_ENV="${MC_LOCAL_ENV:-$REPO_ROOT/server.env}"
 
 PAPER_JAR="$SERVER_DIR/paper.jar"
 GEYSER_JAR="$PLUGINS_DIR/geyser.jar"
@@ -61,7 +67,119 @@ load_versions() {
   done
 }
 
+# Resolves the newest STABLE Paper build for an arbitrary Minecraft version
+# instead of reading a pin, writes the pin file, and then falls through to the
+# normal checksum-verified download.
+#
+# The checksum and the required Java version both come from Paper's own API, so a
+# version this repository has never seen is still verified and still gets the
+# right JVM: the Java floor moves with Minecraft (17 for 1.20.x, 21 for 1.21.x,
+# 25 for 26.x), and hardcoding one number would break every server but the last.
+resolve_paper_catalog() {
+  local want="$1"
+  require_cmd curl
+  [[ -n "$want" ]] || die "usage: mc install --catalog <minecraft-version>"
+
+  log "resolving Minecraft $want from PaperMC"
+  local meta
+  meta="$(curl -fsSL --max-time 45 \
+    "https://fill.papermc.io/v3/projects/paper/versions/${want}")" \
+    || die "Paper does not publish Minecraft $want"
+
+  JAVA_MAJOR="$(printf '%s' "$meta" | json_eval '.version.java.version.minimum' \
+    'd["version"]["java"]["version"]["minimum"]')"
+  [[ "$JAVA_MAJOR" =~ ^[0-9]+$ ]] \
+    || die "Paper's API reported no Java version for Minecraft $want"
+
+  # Paper ships its own recommended GC flags per version. Prefer them; the
+  # hand-tuned set in jvm_flags() remains the fallback for a repository install
+  # that was never catalog-resolved.
+  PAPER_JAVA_FLAGS="$(printf '%s' "$meta" | json_eval \
+    '.version.java.flags.recommended // [] | join(" ")' \
+    '" ".join(d["version"]["java"]["flags"].get("recommended", []))')"
+  (( ${#PAPER_JAVA_FLAGS} > 0 )) || PAPER_JAVA_FLAGS=""
+
+  local builds candidate
+  builds="$(curl -fsSL --max-time 45 \
+    "https://fill.papermc.io/v3/projects/paper/versions/${want}/builds")" \
+    || die "Paper has no builds published for Minecraft $want"
+
+  # STABLE only: an alpha or beta must never land on someone's server because a
+  # catalog install ran. Sort numerically, then take the last entry.
+  candidate="$(printf '%s' "$builds" | json_eval \
+    '[.[] | select(.channel == "STABLE")] | sort_by(.id) | last | .id // empty' \
+    'max([b["id"] for b in d if b["channel"] == "STABLE"], default=None)')"
+  [[ -n "$candidate" && "$candidate" != "None" ]] \
+    || die "no STABLE Paper build for Minecraft $want (only pre-releases exist)"
+
+  MINECRAFT_VERSION="$want"
+  PAPER_BUILD="$candidate"
+  PAPER_SHA256="$(printf '%s' "$builds" | json_eval \
+    '.[] | select(.id == '"$candidate"') | .downloads."server:default".checksums.sha256' \
+    'next((b["downloads"]["server:default"]["checksums"]["sha256"] for b in d if b["id"] == '"$candidate"'), "")')"
+  [[ -n "$PAPER_SHA256" ]] || die "Paper's API returned no checksum for build $candidate"
+
+  # Geyser and Floodgate follow the Bedrock protocol, so they deliberately track
+  # the latest build rather than being pinned per Minecraft version.
+  resolve_geyser_catalog
+
+  write_version_file
+  ok "pinned paper $MINECRAFT_VERSION build $PAPER_BUILD (sha256 ${PAPER_SHA256:0:16}...)"
+  ok "pinned geyser $GEYSER_VERSION build $GEYSER_BUILD, floodgate $FLOODGATE_VERSION build $FLOODGATE_BUILD"
+  ok "this version needs Java ${JAVA_MAJOR}+"
+}
+
+resolve_geyser_catalog() {
+  local project version build sha
+  for project in geyser floodgate; do
+    local meta
+    meta="$(curl -fsSL --max-time 45 \
+      "https://download.geysermc.org/v2/projects/${project}/versions/latest/builds/latest")" \
+      || die "could not reach the ${project} download API"
+    version="$(printf '%s' "$meta" | json_eval '.version' 'd["version"]')"
+    build="$(printf '%s' "$meta" | json_eval '.build' 'd["build"]')"
+    sha="$(printf '%s' "$meta" | json_eval '.downloads.spigot.sha256' 'd["downloads"]["spigot"]["sha256"]')"
+    [[ -n "$version" && -n "$build" && -n "$sha" ]] \
+      || die "could not read the latest ${project} build metadata"
+    if [[ "$project" == "geyser" ]]; then
+      GEYSER_VERSION="$version"; GEYSER_BUILD="$build"; GEYSER_SHA256="$sha"
+    else
+      FLOODGATE_VERSION="$version"; FLOODGATE_BUILD="$build"; FLOODGATE_SHA256="$sha"
+    fi
+  done
+}
+
+# Writes the pins back to VERSION_FILE so the download below, and every later
+# `mc` invocation, verifies against exactly what was resolved.
+write_version_file() {
+  local tmp
+  tmp="$(mktemp "${VERSION_FILE}.XXXXXX")" || die "could not write $VERSION_FILE"
+  {
+    printf '# Generated by `mc install --catalog %s`. Minecraft world data is not in\n' "$MINECRAFT_VERSION"
+    printf '# git; this pin file is. Re-run `mc install --catalog` to change version.\n\n'
+    printf 'MINECRAFT_VERSION=%s\n' "$MINECRAFT_VERSION"
+    printf 'PAPER_BUILD=%s\n' "$PAPER_BUILD"
+    printf 'PAPER_SHA256=%s\n' "$PAPER_SHA256"
+    printf 'PAPER_JAVA_FLAGS=%s\n\n' "$PAPER_JAVA_FLAGS"
+    printf 'GEYSER_VERSION=%s\n' "$GEYSER_VERSION"
+    printf 'GEYSER_BUILD=%s\n' "$GEYSER_BUILD"
+    printf 'GEYSER_SHA256=%s\n' "$GEYSER_SHA256"
+    printf 'FLOODGATE_VERSION=%s\n' "$FLOODGATE_VERSION"
+    printf 'FLOODGATE_BUILD=%s\n' "$FLOODGATE_BUILD"
+    printf 'FLOODGATE_SHA256=%s\n\n' "$FLOODGATE_SHA256"
+    printf '# Resolved from PaperMC for this Minecraft version, not hardcoded.\n'
+    printf 'JAVA_MAJOR=%s\n\n' "$JAVA_MAJOR"
+    printf '# Written by the agent from the dashboard memory settings.\n'
+    printf 'MIN_MEMORY=%s\n' "$MIN_MEMORY"
+    printf 'MAX_MEMORY=%s\n' "$MAX_MEMORY"
+  } > "$tmp"
+  mv -f "$tmp" "$VERSION_FILE"
+}
+
 # Per-machine overrides, applied after the pins so a VM can differ from CI.
+# For an agent-managed server this is the file the agent writes from the
+# dashboard's memory settings, which is why it is overridable: several servers
+# on one machine each need their own.
 load_local_env() {
   [[ -f "$LOCAL_ENV" ]] || return 0
   set -a
@@ -69,6 +187,7 @@ load_local_env() {
   source "$LOCAL_ENV"
   set +a
 }
+
 
 # ---- derived download URLs --------------------------------------------------
 
@@ -209,9 +328,21 @@ server_pid() {
   printf '%s' "$pid"
 }
 
-# Aikar-style G1GC flags, the set Paper's own performance guide points at.
-# One flag per line so it stays readable and greppable.
+# Aikar-style G1GC flags, the set Paper's own performance guide points at. One
+# flag per line so it stays readable and greppable.
+#
+# When the server was installed with `mc install --catalog`, Paper published a
+# recommended flag set for that exact Minecraft version and it is in the pin file
+# as PAPER_JAVA_FLAGS. Those win, because they are what the server's own authors
+# tested against that release; this hand-tuned set is the fallback for a
+# repository install that was never catalog-resolved.
 jvm_flags() {
+  if [[ -n "${PAPER_JAVA_FLAGS:-}" ]]; then
+    printf '%s\n' "$PAPER_JAVA_FLAGS" | tr ' ' '\n' | sed '/^$/d'
+    printf '%s\n' "-Dfile.encoding=UTF-8"
+    return 0
+  fi
+
   cat <<'FLAGS'
 -XX:+UseG1GC
 -XX:+ParallelRefProcEnabled

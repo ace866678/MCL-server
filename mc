@@ -22,6 +22,9 @@ Usage: mc <command> [options]
 
 Commands
   install          Verify Java, seed config, download + checksum the jars
+  install --catalog <mc-version>
+                   Resolve the newest STABLE Paper build for any Minecraft
+                   version, re-pin, then install and verify it
   start            Run the server in the foreground (Ctrl-C stops it cleanly)
   stop             Ask a running server to shut down
   restart          stop, then start
@@ -103,9 +106,45 @@ fetch_jar() {
 # ---- commands ---------------------------------------------------------------
 
 cmd_install() {
+  local catalog=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --catalog)
+        catalog="${2:-}"
+        [[ -n "$catalog" ]] || die "--catalog needs a Minecraft version, e.g. --catalog 1.21.4"
+        shift 2
+        ;;
+      --catalog=*) catalog="${1#*=}"; shift ;;
+      -h|--help)   printf 'usage: mc install [--catalog <minecraft-version>]\n'; return 0 ;;
+      *)           die "unknown option for mc install: $1" ;;
+    esac
+  done
+
+  require_cmd curl
+
+  # --catalog resolves the newest STABLE build for a version this repository has
+  # never heard of, writes the pins, and then continues through the ordinary
+  # checksum-verified path below. It is the only way to change Minecraft version,
+  # and a requested version that does not exist fails here rather than half way
+  # through a download.
+  #
+  # This runs before the first load_versions: a brand new per-server directory
+  # has no pin file yet, so seed one from the repository default. That is where
+  # JAVA_MAJOR and the memory defaults come from before the catalog replaces them.
+  if [[ -n "$catalog" ]]; then
+    if [[ ! -f "$VERSION_FILE" ]]; then
+      mkdir -p "$(dirname "$VERSION_FILE")"
+      cp "$REPO_ROOT/VERSION" "$VERSION_FILE" \
+        || die "could not seed a pin file at $VERSION_FILE"
+      dim "seeded $(basename "$VERSION_FILE") from the repository default"
+    fi
+    load_versions
+    load_local_env
+    resolve_paper_catalog "$catalog"
+  fi
+
   load_versions
   load_local_env
-  require_cmd curl
 
   log "Minecraft ${MINECRAFT_VERSION} — Paper build ${PAPER_BUILD}, Java ${JAVA_MAJOR}+"
   check_java

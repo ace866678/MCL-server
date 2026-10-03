@@ -1,3 +1,12 @@
+-- 0001_legacy_schema.sql
+--
+-- The original two-table schema from the single-VM project, kept verbatim as a
+-- marker so `supabase db push` on an already-provisioned project reproduces the
+-- history rather than silently diverging from it. Every column here is
+-- preserved (and ALTERed, never dropped) by 0002 and 0003.
+--
+-- Nothing in the application reads this file directly; see 0002_core.sql.
+
 create table if not exists public.agents (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
