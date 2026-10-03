@@ -1,4 +1,4 @@
-import { getStatus } from "@/lib/bridge";
+import { getPlayers, getStatus } from "@/lib/bridge";
 import { adminConfigured, isAdmin } from "@/lib/auth";
 import { BackupButton, ConsoleForm, LoginForm, SignOutButton } from "./admin-controls";
 
@@ -6,7 +6,11 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
   const signedIn = await isAdmin();
-  const status = await getStatus();
+  // Only ask the bridge once there is a session to answer: an unauthenticated
+  // visitor gets nothing out of it, and each call opens an RCON connection.
+  const [status, players] = signedIn
+    ? await Promise.all([getStatus(), getPlayers()])
+    : [null, null];
 
   return (
     <>
@@ -32,15 +36,32 @@ export default async function AdminPage() {
         <>
           <section className="panel">
             <h2>State</h2>
-            {status.ok ? (
+            {status?.ok ? (
               <p className="empty">
                 Server is {status.data.running ? "running" : "stopped"}
                 {status.data.pid ? ` (pid ${status.data.pid})` : ""}.
               </p>
             ) : (
-              <p className="empty">Bridge unreachable: {status.error}</p>
+              <p className="empty">Bridge unreachable: {status?.error ?? "not checked"}</p>
             )}
             <SignOutButton />
+          </section>
+
+          <section className="panel">
+            <h2>Players online</h2>
+            {players?.ok ? (
+              players.data.players.length ? (
+                <p className="empty">
+                  {players.data.players.map((player) => player.name).join(", ")}
+                </p>
+              ) : (
+                <p className="empty">Nobody is connected.</p>
+              )
+            ) : (
+              <p className="empty">
+                Player counts come from RCON: {players?.error ?? "not checked"}
+              </p>
+            )}
           </section>
 
           <section className="panel">

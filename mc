@@ -222,6 +222,9 @@ cmd_restart() {
 
 cmd_status() {
   load_versions
+  # server.env can move the heap off the VERSION default, so read it before
+  # reporting what the server would actually run with.
+  load_local_env
   local pid major rc=0
   if pid="$(server_pid)"; then
     ok "running (pid $pid)"
@@ -277,6 +280,7 @@ cmd_console() {
 
 cmd_backup() {
   load_versions
+  load_local_env
   require_cmd zip
   local pid
   if pid="$(server_pid)"; then
@@ -438,9 +442,10 @@ cmd_update() {
 # re-running after fixing one problem picks up where it left off.
 cmd_deploy() {
   local dry_run=0
+  local -a deploy_args=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --dry-run|-n) dry_run=1; shift ;;
+      --dry-run|-n) dry_run=1; deploy_args+=("$1"); shift ;;
       -h|--help)    printf 'usage: mc deploy [--dry-run]\n'; return 0 ;;
       *)            die "unknown option for mc deploy: $1" ;;
     esac
@@ -501,7 +506,9 @@ cmd_deploy() {
     if (( EUID != 0 )); then
       if command -v sudo >/dev/null 2>&1; then
         warn "needs root; re-running under sudo"
-        exec sudo -- "$0" deploy
+        # Carry the original flags across, or `mc deploy --dry-run` silently
+        # becomes a real deploy the moment it re-executes itself.
+        exec sudo -- "$0" deploy ${deploy_args[@]+"${deploy_args[@]}"}
       fi
       die "needs root. Re-run with sudo."
     fi
@@ -776,8 +783,16 @@ cmd_doctor() {
   if command -v free >/dev/null 2>&1; then
     local avail_mb
     avail_mb="$(free -m | awk '/^Mem:/ {print $7}')"
-    local want_mb="${MAX_MEMORY%G}"
-    if [[ "$want_mb" =~ ^[0-9]+$ ]] && [[ -n "$avail_mb" ]] && (( avail_mb < want_mb )); then
+    # MAX_MEMORY is in megabytes (4G, 8192M); `free -m` reports megabytes too.
+    # Without the conversion below this compared a megabyte count against a
+    # gigabyte count and could never fire.
+    local want_mb=""
+    case "$MAX_MEMORY" in
+      *G|*g) want_mb="$((${MAX_MEMORY%[Gg]} * 1024))" ;;
+      *M|*m) want_mb="$((${MAX_MEMORY%[Mm]}))" ;;
+      *K|*k) want_mb="$(( ${MAX_MEMORY%[Kk]} / 1024 ))" ;;
+    esac
+    if [[ -n "$want_mb" ]] && [[ -n "$avail_mb" ]] && (( avail_mb < want_mb )); then
       warn_ "only ${avail_mb}MB RAM available, MAX_MEMORY is ${MAX_MEMORY} — the JVM may fail to reserve its heap"
     else
       info "ram       ${avail_mb}MB available (MAX_MEMORY ${MAX_MEMORY})"
@@ -853,7 +868,7 @@ cmd_doctor() {
   udp_ports="$(awk 'NR>1 {split($2,a,":"); print toupper(a[2])}' \
                  /proc/net/udp /proc/net/udp6 2>/dev/null || true)"
 
-  local spec port proto hex listening
+  local spec port proto proto_label hex listening
   for spec in "25565:tcp:java" "19132:udp:bedrock"; do
     port="${spec%%:*}"; spec="${spec#*:}"
     proto="${spec%%:*}"; proto_label="${spec#*:}"

@@ -24,11 +24,28 @@ from pathlib import Path
 LOG = logging.getLogger("mcl-agent")
 ALLOWED_COMMANDS = {"start", "stop", "restart", "backup", "status", "logs"}
 
+def required_env(name: str) -> str:
+    """Fail with the variable to fix, not a bare KeyError traceback."""
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise SystemExit(f"mcl-agent: {name} is not set (see the agent setup steps)")
+    return value
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+def new_token() -> str:
+    return secrets.token_urlsafe(32)
+
 class ServerAgent:
     def __init__(self) -> None:
-        self.agent_id = os.environ["MCL_AGENT_ID"]
-        self.token = os.environ["MCL_AGENT_TOKEN"]
-        self.api_url = os.environ["MCL_API_URL"].rstrip("/")
+        self.agent_id = required_env("MCL_AGENT_ID")
+        self.token = required_env("MCL_AGENT_TOKEN")
+        self.api_url = required_env("MCL_API_URL").rstrip("/")
         self.server_dir = Path(os.environ.get("MCL_SERVER_DIR", "server")).resolve()
         self.mc_script = Path(os.environ.get("MCL_MC_SCRIPT", "mc")).resolve()
         self.stop_event = threading.Event()
@@ -80,15 +97,5 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, lambda *_: agent.stop_event.set())
     signal.signal(signal.SIGINT, lambda *_: agent.stop_event.set())
     agent.run()
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-def new_token() -> str:
-    return secrets.token_urlsafe(32)
 
 __all__ = ["ServerAgent", "sha256_file", "new_token"]

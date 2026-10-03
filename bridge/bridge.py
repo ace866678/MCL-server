@@ -284,8 +284,6 @@ class Bridge:
             "crossplay": True,
             "rcon": "unknown",
         }
-        if payload["playersMax"] is None:
-            payload.pop("playersMax")
 
         if not self.password:
             payload["rcon"] = "no password configured"

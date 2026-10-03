@@ -10,7 +10,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <main className="page">{children}</main>
+        {/* A div, not a <main>: each route renders its own <main>, and a
+            document may only have one. `.page` carries the same layout. */}
+        <div className="page">{children}</div>
       </body>
     </html>
   );

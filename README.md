@@ -254,15 +254,18 @@ Vercel (Next.js, web/)  ──HTTPS──▶  tunnel  ──▶  bridge (bridge/
 ```
 
 `mc deploy` already enables RCON on loopback, writes the secrets to `/etc/minecraft-bridge.env`
-(mode 600) and installs `minecraft-bridge.service`. Expose the bridge with a tunnel, then set three
-variables on the Vercel project and point its root directory at `web`:
+(mode 600) and installs `minecraft-bridge.service`. Expose the bridge with a tunnel, then set the
+variables below and point the Vercel project's root directory at `web`:
 
 | Variable | Where it comes from |
 | --- | --- |
 | `MINECRAFT_BRIDGE_URL` | your tunnel URL, forwarding to `127.0.0.1:8787` |
 | `MINECRAFT_BRIDGE_TOKEN` | `BRIDGE_TOKEN` in `/etc/minecraft-bridge.env` |
 | `ADMIN_PASSWORD` | anything you choose; gates `/admin` |
-| `MINECRAFT_JOIN_ADDRESS` | the hostname players connect to, shown on the page |
+
+`web/` also holds the Supabase-backed control plane (`NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, schema in `supabase/schema.sql`); see `web/README.md`. The
+bridge-backed `/admin` page works without either.
 
 With `cloudflared` installed, a tunnel is one command and needs no open inbound port:
 
