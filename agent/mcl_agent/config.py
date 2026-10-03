@@ -103,10 +103,13 @@ def load(config_path: Path | None = None) -> Config:
         raise ConfigError("token is shorter than expected; copy the whole value.")
     if not api_url:
         raise ConfigError(f"api_url is missing from {path}.")
-    if not api_url.startswith("https://"):
+    if not api_url.startswith("https://") and not _insecure_allowed():
         # The token digest crosses the network on every request. Refusing plain
         # http is what makes the digest-only design defensible.
-        raise ConfigError("api_url must be https:// — the agent refuses to send its digest over http.")
+        raise ConfigError(
+            "api_url must be https:// — the agent refuses to send its digest over http. "
+            "Set MCL_ALLOW_INSECURE_TRANSPORT=1 only to test against a local stub."
+        )
 
     data_dir = _resolve_dir(env.get("MCL_DATA_DIR") or raw.get("data_dir"), path.parent / "data")
     repo_dir = _resolve_dir(env.get("MCL_REPO_DIR") or raw.get("repo_dir"), path.parent.parent)
@@ -201,6 +204,17 @@ def _looks_like_uuid(value: str) -> bool:
     if [len(p) for p in parts] != [8, 4, 4, 4, 12]:
         return False
     return all(c in "0123456789abcdefABCDEF" for p in parts for c in p)
+
+
+def _insecure_allowed() -> bool:
+    """Opt-in for plain http, for testing against a stub on loopback.
+
+    Deliberately a separate variable rather than a flag on api_url, and it has to
+    be spelled out: the digest would otherwise cross the network in clear text,
+    and an agent pointed at a real remote host over http would be a credential
+    leak that nothing else would catch.
+    """
+    return os.environ.get("MCL_ALLOW_INSECURE_TRANSPORT", "").strip() in {"1", "true", "yes"}
 
 
 def _clamp_int(value: Any, low: int, high: int, fallback: int) -> int:

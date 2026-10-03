@@ -13,3 +13,27 @@ code{background:#0b1018;border:1px solid var(--border);border-radius:.25rem;padd
 .result[data-ok=false]{color:var(--danger)}
 .stack{display:flex;flex-direction:column;gap:1rem}
 .token-box{background:#0b1018;border:1px solid var(--border);border-radius:.6rem;padding:.9rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem;white-space:pre-wrap;word-break:break-all}
+
+/* Control panel: a row of buttons that should not stretch to fill the panel. */
+.button-row{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:.75rem}
+.button-row form{display:contents}
+
+/* Backups and activity: a plain definition list, so a long filename wraps
+   instead of pushing the timestamp off the panel. */
+.record-list{list-style:none;margin:.5rem 0 0;padding:0;display:flex;flex-direction:column;gap:.35rem}
+.record-list li{display:flex;flex-wrap:wrap;align-items:baseline;gap:.6rem;padding:.45rem .6rem;background:#0b1018;border:1px solid var(--border);border-radius:.5rem;font-size:.82rem}
+.record-list li span{flex:1 1 12rem;min-width:0;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.record-list li b{color:var(--muted);font-weight:600}
+.record-list li time{color:var(--muted);font-size:.75rem}
+
+/* Server log output. Fixed height with its own scrollbar so a chatty server
+   cannot push the controls below it off the screen. */
+.log-box{background:#0b1018;border:1px solid var(--border);border-radius:.6rem;padding:.8rem;margin:0;max-height:22rem;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.76rem;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* A checkbox inside a .field keeps the label and the box on one baseline; the
+   growing input rule above would otherwise stretch it to a text field. */
+.field.checkbox{flex-direction:row;align-items:center;gap:.5rem;font-weight:600}
+.field.checkbox input{flex:0 0 auto;width:1.1rem;height:1.1rem;min-width:0}
+
+.subtitle{color:var(--muted);font-size:.85rem;margin:.35rem 0 0}
+.link-button{background:none;color:var(--accent);font-weight:600;padding:.4rem 0;text-decoration:underline;text-underline-offset:.2rem}

@@ -1,10 +1,18 @@
 {
   "name": "cloud-vm",
   "private": true,
+  "//": "A thin wrapper: `npm run build` from the root delegates to web/, which is the app Vercel actually builds (see vercel.json rootDirectory). `next` is declared here only because pnpm-lock.yaml records it at the root importer and removing it would desynchronise that lockfile. Nothing installs from this file on Vercel.",
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "npm --prefix web run dev",
     "build": "npm --prefix web run build",
-    "typecheck": "npm --prefix web run typecheck"
+    "start": "npm --prefix web run start",
+    "typecheck": "npm --prefix web run typecheck",
+    "test:agent": "python3 agent/tests/test_agent.py",
+    "test:bridge": "python3 bridge/test_bridge.py",
+    "test:protocol": "python3 agent/tests/stub_agent_api.py --self-test"
   },
   "dependencies": {
     "next": "16.3.8"

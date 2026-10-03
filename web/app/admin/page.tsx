@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getPlayers, getStatus } from "@/lib/bridge";
 import { adminConfigured, isAdmin } from "@/lib/auth";
 import { BackupButton, ConsoleForm, LoginForm, SignOutButton } from "./admin-controls";
@@ -18,6 +19,14 @@ export default async function AdminPage() {
       <p className="subtitle">
         Backups and console commands. Everything here runs as the <code>minecraft</code> user on
         the game server.
+      </p>
+      {/* This page is the single-VM path: one bridge on one machine. For the
+          agent-based setup, servers registered in Supabase are managed from the
+          dashboard instead. */}
+      <p className="empty">
+        This page manages the server on one machine through <code>bridge/bridge.py</code>. Servers
+        you host with the local Agent are managed from the{" "}
+        <Link href="/">dashboard</Link>.
       </p>
 
       {!adminConfigured() ? (

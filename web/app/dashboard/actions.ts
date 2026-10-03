@@ -19,7 +19,8 @@ export type FormResult = { ok: boolean; message: string };
 export type AgentCredentials = FormResult & {
   agentId?: string;
   token?: string;
-  env?: string;
+  env?: string | null;
+  hint?: string | null;
 };
 
 async function signedIn() {
@@ -61,16 +62,25 @@ export async function registerAgent(
   }
 
   revalidatePath("/dashboard/agents");
+
+  const endpoint = apiUrl();
   return {
     ok: true,
     message: `${name} registered. Copy the token now — it is not stored in readable form.`,
     agentId: agent.id,
     token,
-    env: [
-      `MCL_AGENT_ID=${agent.id}`,
-      `MCL_AGENT_TOKEN=${token}`,
-      "MCL_API_URL=https://<this deployment>",
-    ].join("\n"),
+    env: endpoint
+      ? [
+          `MCL_AGENT_ID=${agent.id}`,
+          `MCL_AGENT_TOKEN=${token}`,
+          `MCL_API_URL=${endpoint}`,
+        ].join("\n")
+      : null,
+    // Surfaced rather than silently omitted: without the Supabase URL the
+    // operator would get a block with no endpoint and no idea why.
+    hint: endpoint
+      ? null
+      : "NEXT_PUBLIC_SUPABASE_URL is not set on this deployment, so the agent URL could not be filled in. Set it and register the agent again, or add the endpoint to MCL_API_URL yourself.",
   };
 }
 
@@ -108,20 +118,34 @@ export async function createServer(
     .maybeSingle();
   if (!agent) return { ok: false, message: "That agent is not registered to you." };
 
-  const { error } = await session.supabase.from("servers").insert({
-    owner_id: session.user.id,
-    agent_id: agentId,
-    name,
-    minecraft_version: minecraftVersion,
-  });
+  const { data: created, error } = await session.supabase
+    .from("servers")
+    .insert({
+      owner_id: session.user.id,
+      agent_id: agentId,
+      name,
+      minecraft_version: minecraftVersion,
+    })
+    .select("id")
+    .single();
 
-  if (error) {
-    return { ok: false, message: `Could not create the server: ${error.message}` };
+  if (error || !created) {
+    return { ok: false, message: `Could not create the server: ${error?.message ?? "unknown error"}` };
   }
   revalidatePath("/");
-  redirect("/");
+  // Straight to the control panel: a new server needs its first install, and the
+  // panel is where that button is. Sending them to a list to hunt it down would
+  // be the first thing they hit.
+  redirect(`/dashboard/servers/${created.id}`);
 }
 
+/**
+ * Delete a server record.
+ *
+ * Only the row is removed. The world, the player data and the backups stay on the
+ * machine the agent runs on -- a cloud panel has no business deleting someone's
+ * world, and the operator is the only one who can judge whether it is safe.
+ */
 export async function deleteServer(formData: FormData): Promise<void> {
   const session = await signedIn();
   const id = String(formData.get("id") ?? "");
@@ -129,9 +153,24 @@ export async function deleteServer(formData: FormData): Promise<void> {
     await session.supabase.from("servers").delete().eq("id", id);
   }
   revalidatePath("/");
+  revalidatePath("/dashboard/agents");
   redirect("/");
 }
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+/**
+ * The agent endpoint this deployment is reachable at.
+ *
+ * The agent always talks to the Supabase Edge Function, never to this Next.js
+ * deployment, so this is derived from the project's own Supabase URL. There is no
+ * fallback to a Vercel hostname: the agent needs an https endpoint that
+ * authenticates it, and inventing one that does not exist would hand the operator
+ * a configuration that cannot possibly work.
+ */
+function apiUrl(): string | null {
+  const configured = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  return configured ? `${configured.replace(/\/+$/, "")}/functions/v1/agent-api` : null;
 }

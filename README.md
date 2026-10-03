@@ -16,16 +16,39 @@ data do not.
 26.3 exists but is beta-only, so 26.2 is what is pinned. `mc update` picks up the first STABLE
 build and never moves you onto a pre-release.
 
+## Two ways to run it
+
+| | Single VM | Cloud control plane |
+| --- | --- | --- |
+| Servers | one, on one machine | as many as your agents host |
+| Panel | `/admin`, behind `ADMIN_PASSWORD` | `/dashboard`, Supabase accounts and RLS |
+| Runs on | a VPS you rent | hardware you already own, Windows or Linux |
+| Management path | a tunnel to `bridge/bridge.py` | outbound HTTPS from the agent |
+| Router config | yes, for players | no, for management |
+
+Both use the same `mc` script, the same pins and the same backups. Pick the VM
+path below if you only ever run one server; pick the control plane if you want
+several machines under one panel. Nothing here requires the other.
+
 ## Layout
 
 ```
 VERSION              pinned versions + SHA-256 for every jar (single source of truth)
 mc                   the only script you need: install, start, stop, backup, update, …
 lib/common.sh        shared shell helpers
+lib/mcl_rcon.py      RCON client, shared by the bridge and the agent
 config/              seed files, copied into server/ on first install
   server.properties    network, world and player settings
   eula.txt             ships with eula=false on purpose
   ops.json whitelist.json banned-*.json
+agent/               the local Server Agent (stdlib Python only)
+  agent.py             entry point: `python3 agent/agent.py`
+  mcl_agent/           config, backend client, command allowlist, status, tunnel
+  tests/               91 unit tests plus a stub of the Edge Function to test against
+  agent.json           your credentials, gitignored, created by you
+backend/             Supabase: schema, RLS, and the agent-api Edge Function
+web/                 the Next.js control panel, deployed to Vercel
+bridge/              HTTP bridge for the single-VM mode
 systemd/             unit file for a bare cloud VM
 docker/              Dockerfile, entrypoint and compose file
 server/              runtime state — worlds, plugins, logs, generated configs (gitignored)
@@ -240,11 +263,133 @@ Worlds are not in git. `mc backup` writes a timestamped zip to `backups/` coveri
 nether, end, player data, plugin data and `server.properties`; jars are skipped because
 `VERSION` can always re-fetch them. Cron it, and copy the zips somewhere the VM cannot delete.
 
-## Status web page (Vercel)
+## Cloud control plane (Vercel + Supabase + local agent)
 
-A Minecraft server cannot run on Vercel &mdash; functions are request-scoped and capped at 300s,
-there is no UDP for Bedrock, and you do not get to choose the runtime image. So the server stays on
-the VM and Vercel hosts only a small read-mostly front end:
+This is the multi-server mode. The Vercel app is a control panel and nothing else:
+no Minecraft process, no world data, no credential for the machine running the
+game. The game runs on hardware you already own, and a small agent on that
+hardware dials out to the control plane.
+
+```
+Vercel (Next.js, web/)          Supabase                  your machine
+┌──────────────────────┐        ┌──────────────────┐      ┌──────────────────────────┐
+│ dashboard, sign-in  │───────▶│ Postgres + RLS   │◀─────│ agent/agent.py           │
+│ server control panel│  JWT   │ Edge Function    │ HTTPS│   └─ mc install/start/...│
+└──────────────────────┘        └──────────────────┘      │   └─ Paper + Geyser      │
+                                       ▲                  │   └─ RCON 127.0.0.1      │
+                                       └──────────────────┴──────────────────────────┘
+```
+
+The agent only ever makes **outbound** HTTPS requests. It never listens on a
+port, so hosting a server on a home network needs no port forwarding and no
+inbound firewall rule for *management*. Players still need the game port
+reachable — see [Networking](#networking).
+
+### What the agent never does
+
+* No shell, ever. Handlers build a fixed list of argv elements and call
+  `subprocess` with `shell=False`. Nothing from the network is concatenated into
+  a command line, so metacharacters are inert data.
+* Only the ten commands in `server_commands.command`'s `CHECK` constraint. The
+  agent's `commands.ALLOWED` mirrors that list and a test asserts they agree; a
+  command in the database but not in the agent is refused, not guessed at.
+* Every argument validated against its own bounds before use. `server.console`
+  is filtered against a real allowlist of read-only and low-impact Minecraft
+  commands, because Minecraft's own parser contains operator commands.
+* Stopping the agent never stops a server. Game servers are spawned detached and
+  outlive an agent restart, so a panel reload cannot take a world offline.
+
+### Deploy the control plane
+
+```bash
+cd backend
+supabase login
+supabase link --project-ref <your-project-ref>
+supabase db push                                        # schema first
+supabase functions deploy agent-api --no-verify-jwt      # then the function
+```
+
+Then set on the Vercel project:
+
+| Variable | Purpose |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | your project URL, e.g. `https://abc.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | anon key, used from the browser |
+| `SUPABASE_SERVICE_ROLE_KEY` | service-role key, used by the Edge Function. **Server-only** — never prefix this with `NEXT_PUBLIC_` |
+
+Full details, including the header contract and the reasoning behind digest-only
+credentials, are in [`backend/README.md`](backend/README.md).
+
+### Register an agent
+
+1. Sign in at `/login`, then **Connect an agent** on the dashboard.
+2. Give it a name and pick the platform. The panel shows a three-line block
+   **once**; the token is stored only as its SHA-256.
+
+   ```ini
+   # agent/agent.json  (gitignored)
+   {
+     "agent_id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+     "token":    "<the token from the dashboard>",
+     "api_url":  "https://abc.supabase.co/functions/v1/agent-api",
+     "data_dir": "./data",
+     "repo_dir": ".."
+   }
+   ```
+
+3. Install Java and start the agent:
+
+   ```bash
+   python3 agent/agent.py check    # verifies config and that the backend accepts you
+   python3 agent/agent.py          # runs until Ctrl-C or SIGTERM
+   ```
+
+   Environment variables `MCL_AGENT_ID`, `MCL_AGENT_TOKEN`, `MCL_API_URL`,
+   `MCL_DATA_DIR`, `MCL_REPO_DIR` and `MCL_HEARTBEAT_SECONDS` all override the
+   file, which is what the systemd unit uses.
+
+   To run it as a service instead:
+
+   ```bash
+   sudo install -m 644 systemd/mcl-agent.service /etc/systemd/system/
+   sudo install -m 600 /dev/null /etc/mcl-agent.env   # then add MCL_AGENT_ID=…, MCL_AGENT_TOKEN=…, MCL_API_URL=…
+   sudo systemctl enable --now mcl-agent
+   journalctl -u mcl-agent -f
+   ```
+
+### Create a server
+
+**New server** picks the agent and a Minecraft version. The panel sends a server
+row; the agent notices it on its next poll and reports `offline`. Then open the
+server and use **Install** — the agent resolves that version against PaperMC,
+downloads the build, and verifies its SHA-256 against the digest Paper publishes
+before running it. Java is chosen per Minecraft version (Paper says so; it is not
+hardcoded), and the pins are written to that server's own `version.env`.
+
+## Networking
+
+A Minecraft server speaks raw TCP. Nothing in this platform makes that reachable
+from the internet on its own, and no built-in provider pretends otherwise:
+
+| Provider | `tunnel.provider` | What it does |
+| --- | --- | --- |
+| Direct | `direct` (default) | Nothing. Reports the local address and says reachability is *unknown* unless the operator has set up port forwarding. |
+| playit.gg | `playit` | Supervises the `playit` binary, which does forward raw TCP. Claim token goes in `agent.json`, never to the backend. |
+| Anything else | `command` | Runs your own relay argv — frpc, ngrok, a reverse SSH tunnel. `{port}` is substituted. |
+
+```json
+"tunnel": { "provider": "command", "args": ["frpc", "-c", "/path/to/frpc.ini", "--server_port", "{port}"] }
+```
+
+`cloudflared`'s quick tunnel is *not* one of these: it terminates HTTP and
+WebSocket and will not carry a game client's TCP connection. An operator who
+believes their server is reachable, and is not, is the worst outcome here, so
+`direct` reports what it can observe and stops there.
+
+## Status web page (single-VM bridge)
+
+The original single-machine mode still works, and is the simpler option if you
+only ever run one server on one box:
 
 ```
 Vercel (Next.js, web/)  ──HTTPS──▶  tunnel  ──▶  bridge (bridge/bridge.py, 127.0.0.1:8787)
@@ -263,9 +408,9 @@ variables below and point the Vercel project's root directory at `web`:
 | `MINECRAFT_BRIDGE_TOKEN` | `BRIDGE_TOKEN` in `/etc/minecraft-bridge.env` |
 | `ADMIN_PASSWORD` | anything you choose; gates `/admin` |
 
-`web/` also holds the Supabase-backed control plane (`NEXT_PUBLIC_SUPABASE_URL`,
-`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, schema in `supabase/schema.sql`); see `web/README.md`. The
-bridge-backed `/admin` page works without either.
+`/admin` is this mode's control panel. The Supabase-backed server pages under
+`/dashboard` are the other mode; they work without any of the three variables
+above.
 
 With `cloudflared` installed, a tunnel is one command and needs no open inbound port:
 
@@ -311,6 +456,26 @@ data directories.
 
 Minecraft itself, Paper, Geyser and Floodgate are not redistributed here. `mc install` fetches
 them at the pinned, checksum-verified versions.
+
+## Tests
+
+```bash
+python3 agent/tests/test_agent.py            # 91 tests, stdlib only
+python3 agent/tests/stub_agent_api.py --self-test   # agent ↔ Edge Function protocol
+python3 bridge/test_bridge.py                 # 23 tests
+bash -n mc && ./mc doctor                     # shell syntax and environment
+npm run build && npm run typecheck            # the panel
+```
+
+`stub_agent_api.py --self-test` runs the real `AgentService` against an in-process stand-in for
+the Edge Function: same routes, same headers, same error codes. It is how the agent's protocol
+side gets tested without Deno, Docker or a Supabase project. The same file can be run as a
+server (`--port 8788`) if you want to point a real agent at it; it binds loopback only and is a
+fixture, not a server.
+
+The self-test is also what caught the one bug that mattered most in building this: the SQL
+function returns a server row with the column named `server_id`, and the Edge Function renames
+it to `id`. Get that wrong and the agent simply finds no servers, with no error anywhere.
 
 ## Licence
 

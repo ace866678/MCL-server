@@ -34,6 +34,7 @@
  * ## Routes
  *
  *   POST /heartbeat                agent liveness + host facts
+ *   GET  /servers                  the servers this agent is responsible for
  *   GET  /commands                 claim queued commands for this agent
  *   POST /commands/:id/result      report a command outcome
  *   POST /servers/:id/status       report one server's live state
@@ -222,6 +223,25 @@ async function ignoreFailure(work: () => PromiseLike<unknown>): Promise<void> {
   }
 }
 
+async function listServers(agentId: string) {
+  if (!(await allow(agentId, RATE_STATUS))) return json(429, { error: "rate limited" });
+
+  const { data, error } = await db.rpc("agent_list_servers", { p_agent_id: agentId });
+  if (error) return json(500, { error: error.message });
+
+  // Narrow each row to the fields the agent is allowed to learn. The RPC already
+  // scopes by agent_id, but shaping the response here means a column added to the
+  // table later cannot leak into an agent's view by default.
+  const servers = (data ?? []).map((row: Record<string, unknown>) => ({
+    id: String(row.server_id ?? ""),
+    name: String(row.name ?? ""),
+    port: Number(row.port) || 25565,
+    status: String(row.status ?? "unavailable"),
+  }));
+
+  return json(200, { servers });
+}
+
 async function claimCommands(agentId: string, url: URL) {
   const limit = clampInt(url.searchParams.get("limit"), 1, 20, 5);
   if (!(await allow(agentId, RATE_MUTATION))) return json(429, { error: "rate limited" });
@@ -370,6 +390,9 @@ Deno.serve(async (request) => {
     }
     if (resource === "commands" && request.method === "GET" && !id) {
       return await claimCommands(agentId, url);
+    }
+    if (resource === "servers" && request.method === "GET" && !id) {
+      return await listServers(agentId);
     }
     if (resource === "commands" && request.method === "POST" && id && action === "result") {
       return await completeCommand(agentId, id, await readJson(raw));

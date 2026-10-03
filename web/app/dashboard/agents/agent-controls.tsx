@@ -10,11 +10,14 @@ function Result({ result }: { result: AgentCredentials | null }) {
       <p className="result" data-ok={result.ok} role="status">
         {result.message}
       </p>
-      {result.token ? (
+      {result.hint ? <div className="notice error">{result.hint}</div> : null}
+      {result.token && result.env ? (
         <>
           <p className="empty">
-            Paste these into the agent&rsquo;s environment on the machine running Minecraft, then
-            start it with <code>python3 agent/agent.py</code>. The token is shown once only.
+            Put these three values in <code>agent/agent.json</code> on the machine that runs
+            Minecraft, then start the agent with <code>python3 agent/agent.py</code>. The token is
+            shown once only, and the panel stores just its SHA-256 &mdash; if you lose it, remove the
+            agent and register a new one.
           </p>
           <pre className="token-box">{result.env}</pre>
         </>

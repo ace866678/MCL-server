@@ -10,6 +10,8 @@ type Server = {
   minecraft_version: string;
   server_software: string;
   agent_id: string;
+  status: string;
+  runtime: Record<string, unknown> | null;
 };
 
 type Agent = { id: string; name: string; last_seen_at: string | null };
@@ -73,7 +75,7 @@ export default async function Home() {
   const [{ data: serverRows, error }, { data: agentRows }] = await Promise.all([
     supabase
       .from("servers")
-      .select("id,name,minecraft_version,server_software,agent_id,created_at")
+      .select("id,name,minecraft_version,server_software,agent_id,status,runtime,created_at")
       .order("created_at", { ascending: false }),
     supabase.from("agents").select("id,name,last_seen_at"),
   ]);
@@ -127,7 +129,18 @@ export default async function Home() {
         <div className="server-grid">
           {servers.map((server) => {
             const agent = agents.get(server.agent_id);
-            const online = Boolean(agent?.last_seen_at);
+            // A stale agent makes the reported status meaningless, so the card
+            // says "no agent reporting" rather than repeating a status that was
+            // measured minutes ago and may no longer be true.
+            const reachable = isRecent(agent?.last_seen_at ?? null);
+            const runtime = server.runtime ?? {};
+            const online = reachable && server.status === "online";
+            const players =
+              typeof runtime.players_online === "number"
+                ? typeof runtime.players_max === "number"
+                  ? `${runtime.players_online} / ${runtime.players_max}`
+                  : String(runtime.players_online)
+                : "unknown";
             return (
               <article className="server-card" key={server.id}>
                 <div className="card-heading">
@@ -139,16 +152,27 @@ export default async function Home() {
                     </p>
                   </div>
                   <span className={`status-pill${online ? "" : " muted"}`}>
-                    <i /> {online ? "Agent online" : "Awaiting agent"}
+                    <i />{" "}
+                    {!reachable
+                      ? "No agent reporting"
+                      : server.status === "online"
+                        ? "Online"
+                        : server.status === "offline"
+                          ? "Offline"
+                          : server.status}
                   </span>
                 </div>
                 <div className="card-stats">
                   <span>
-                    Players <b>&mdash;</b>
+                    Players <b>{players}</b>
                   </span>
                   <span>
-                    Last seen{" "}
-                    <b>{agent?.last_seen_at ? new Date(agent.last_seen_at).toLocaleString() : "never"}</b>
+                    Agent seen{" "}
+                    <b>
+                      {agent?.last_seen_at
+                        ? new Date(agent.last_seen_at).toLocaleTimeString()
+                        : "never"}
+                    </b>
                   </span>
                 </div>
                 <Link href={`/dashboard/servers/${server.id}`}>Open server</Link>
@@ -169,4 +193,18 @@ export default async function Home() {
       )}
     </main>
   );
+}
+
+/**
+ * Whether an agent's last heartbeat is recent enough to trust.
+ *
+ * A server's reported status is only meaningful while the agent that reported it
+ * is still around. Three heartbeat windows: enough to ride out one dropped poll,
+ * tight enough that a closed laptop does not keep showing "Online".
+ */
+function isRecent(timestamp: string | null): boolean {
+  if (!timestamp) return false;
+  const seen = Date.parse(timestamp);
+  if (Number.isNaN(seen)) return false;
+  return Date.now() - seen < 90_000;
 }
