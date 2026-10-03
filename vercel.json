@@ -1,5 +1,5 @@
 {
   "framework": "nextjs",
-  "installCommand": "npm --prefix web ci",
-  "buildCommand": "npm --prefix web run build"
+  "installCommand": "pnpm install --frozen-lockfile && npm --prefix web ci",
+  "buildCommand": "pnpm run build"
 }
