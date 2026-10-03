@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Minecraft Server",
-  description: "Status and player list for the Paper + Geyser cross-play server",
+  title: "MCL Control Plane",
+  description: "Securely manage Minecraft servers running on your own Windows or Linux device.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

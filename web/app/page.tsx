@@ -1,108 +1,15 @@
-import { getPlayers, getStatus } from "@/lib/bridge";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [status, players] = await Promise.all([getStatus(), getPlayers()]);
+  const hasSupabase = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL) && Boolean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_PUBLISHABLE_KEY ?? process.env.SUPABASE_ANON_KEY);
+  if (!hasSupabase) return <main className="landing"><p className="eyebrow">MCL CONTROL PLANE</p><h1>Supabase connection is being provisioned.</h1><p className="hero-copy">The control plane is ready, but the connected Supabase environment is not available to this preview process yet.</p></main>;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return <main className="landing"><p className="eyebrow">MCL CONTROL PLANE</p><h1>Your Minecraft server. Your hardware.</h1><p className="hero-copy">A secure Vercel control panel for Minecraft servers running locally on Windows or Linux. No paid VM required.</p><Link className="button-link" href="/login">Sign in to continue</Link><div className="feature-grid"><article><strong>Outbound agent</strong><span>Your device connects out; no router management port required.</span></article><article><strong>Real status</strong><span>Offline means the local agent is unreachable, never an optimistic fake.</span></article><article><strong>Isolated ownership</strong><span>Supabase RLS keeps every server and agent scoped to its owner.</span></article></div></main>;
 
-  if (!status.ok) {
-    return (
-      <>
-        <h1>Minecraft Server</h1>
-        <p className="subtitle">Paper + Geyser &mdash; Java and Bedrock cross-play</p>
-        <div className="panel">
-          <div className="badge down">
-            <span className="dot" />
-            Bridge unreachable
-          </div>
-          <div className="notice error" style={{ marginTop: "1rem", marginBottom: 0 }}>
-            {status.error}
-          </div>
-          <p className="motd">
-            This page cannot reach the bridge on the game server. Check that it is running
-            (<code>systemctl status minecraft-bridge</code>) and that the tunnel and the bridge URL
-            in the Vercel environment variables are current.
-          </p>
-        </div>
-      </>
-    );
-  }
-
-  const server = status.data;
-  const online = server.playersOnline ?? 0;
-  const max = server.playersMax;
-  const names = players.ok ? players.data.players : [];
-
-  return (
-    <>
-      <h1>Minecraft Server</h1>
-      <p className="subtitle">Paper + Geyser &mdash; Java and Bedrock cross-play</p>
-
-      <section className="panel">
-        <span className={server.running ? "badge up" : "badge down"}>
-          <span className="dot" />
-          {server.running ? "Online" : "Offline"}
-        </span>
-
-        {server.motd ? <p className="motd">{server.motd}</p> : null}
-
-        <div className="grid">
-          <div className="stat">
-            <div className="label">Players</div>
-            <div className="value">
-              {max ? `${online} / ${max}` : online}
-            </div>
-          </div>
-          <div className="stat">
-            <div className="label">Minecraft</div>
-            <div className="value">{server.minecraftVersion ?? "?"}</div>
-          </div>
-          <div className="stat">
-            <div className="label">Paper</div>
-            <div className="value">build {server.paperBuild ?? "?"}</div>
-          </div>
-          <div className="stat">
-            <div className="label">Bedrock port</div>
-            <div className="value">19132/udp</div>
-          </div>
-          <div className="stat">
-            <div className="label">Java port</div>
-            <div className="value">25565/tcp</div>
-          </div>
-          <div className="stat">
-            <div className="label">Geyser</div>
-            <div className="value">{server.geyserVersion ?? "?"}</div>
-          </div>
-        </div>
-
-        {server.rcon !== "ok" ? (
-          <div className="notice" style={{ marginTop: "1.25rem", marginBottom: 0 }}>
-            Player counts are approximate: RCON reports &ldquo;{server.rcon}&rdquo;. The running
-            state above comes from the process, so it stays accurate either way.
-          </div>
-        ) : null}
-      </section>
-
-      <section className="panel">
-        <h2>Online now</h2>
-        {names.length > 0 ? (
-          <ul className="players">
-            {names.map((player) => (
-              <li key={player.name}>{player.name}</li>
-            ))}
-          </ul>
-        ) : (
-          <p className="empty">Nobody is online right now.</p>
-        )}
-      </section>
-
-      <footer>
-        <p>
-          Java: <code>{process.env.MINECRAFT_JOIN_ADDRESS ?? "your-server-host"}</code> on 25565
-          &nbsp;&middot;&nbsp; Bedrock on 19132 (UDP) &mdash; Bedrock usernames appear with a leading
-          dot.
-        </p>
-      </footer>
-    </>
-  );
+  const { data: servers, error } = await supabase.from("servers").select("id,name,minecraft_version,server_software,agent_id,created_at").order("created_at", { ascending: false });
+  return <main><header className="topbar"><div><p className="eyebrow">MCL CONTROL PLANE</p><h1>Dashboard</h1></div><form action="/auth/signout" method="post"><button className="secondary">Sign out</button></form></header><section className="hero-panel"><div><span className="status-pill"><i /> Agent network</span><h2>Run Minecraft on your own device.</h2><p>Install the local Server Agent, register it here, and manage Paper, Geyser, Floodgate, logs, backups, and safe commands from one place.</p></div><Link className="button-link" href="/dashboard/agents">Connect an agent</Link></section><section className="section-heading"><div><p className="eyebrow">YOUR INFRASTRUCTURE</p><h2>Servers</h2></div><Link className="button-link" href="/dashboard/servers/new">New server</Link></section>{error ? <div className="notice error">Database is not ready yet: {error.message}</div> : null}{servers?.length ? <div className="server-grid">{servers.map((server) => <article className="server-card" key={server.id}><div className="card-heading"><div><h3>{server.name}</h3><p>{server.server_software} · Minecraft {server.minecraft_version}</p></div><span className="status-pill muted"><i /> Awaiting agent</span></div><div className="card-stats"><span>Players <b>—</b></span><span>CPU <b>—</b></span><span>RAM <b>—</b></span></div><Link href={`/dashboard/servers/${server.id}`}>Open server</Link></article>)}</div> : <div className="empty-state"><h3>No servers yet</h3><p>Create a server record after connecting the agent that runs Minecraft on your device.</p><Link className="button-link" href="/dashboard/agents">Connect your first agent</Link></div>}</main>;
 }
