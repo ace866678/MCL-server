@@ -6,7 +6,7 @@
     "build": "npm --prefix web run build",
     "typecheck": "npm --prefix web run typecheck"
   },
-  "devDependencies": {
+  "dependencies": {
     "next": "16.3.8"
   }
 }
