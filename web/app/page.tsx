@@ -1,92 +1,182 @@
 import Link from "next/link";
+import { supabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-type ServerRow = {
+type Server = {
   id: string;
   name: string;
   minecraft_version: string;
   server_software: string;
   agent_id: string;
-  created_at: string;
+  status: string;
+  runtime: Record<string, unknown> | null;
 };
 
-function hasSupabaseConfig() {
-  return Boolean(
-    (process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL) &&
-      (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-        process.env.SUPABASE_PUBLISHABLE_KEY ??
-        process.env.SUPABASE_ANON_KEY),
+type Agent = { id: string; name: string; last_seen_at: string | null };
+
+function Landing({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="landing">
+      <p className="eyebrow">MCL CONTROL PLANE</p>
+      {children}
+    </main>
   );
 }
 
 export default async function Home() {
-  if (!hasSupabaseConfig()) {
+  if (!supabaseConfigured()) {
     return (
-      <main className="landing">
-        <p className="eyebrow">MCL CONTROL PLANE</p>
-        <h1>Connect your own Minecraft hardware.</h1>
-        <p className="hero-copy">The dashboard is ready. Supabase configuration is still being provisioned for this deployment.</p>
-      </main>
+      <Landing>
+        <h1>Supabase connection is being provisioned.</h1>
+        <p className="hero-copy">
+          The control plane is ready, but the connected Supabase environment is not available to
+          this preview process yet.
+        </p>
+      </Landing>
     );
   }
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return (
-      <main className="landing">
-        <div className="brand-mark">MCL<span>•</span></div>
-        <p className="eyebrow">PERSONAL SERVER CONTROL</p>
-        <h1>Your world, running on your hardware.</h1>
-        <p className="hero-copy">A secure control plane for Minecraft servers on Windows and Linux. Connect an outbound agent, monitor health, and operate safely without exposing your router.</p>
-        <Link className="button-link" href="/login">Sign in to dashboard</Link>
+      <Landing>
+        <h1>Your Minecraft server. Your hardware.</h1>
+        <p className="hero-copy">
+          A secure Vercel control panel for Minecraft servers running locally on Windows or Linux.
+          No paid VM required.
+        </p>
+        <Link className="button-link" href="/login">
+          Sign in to continue
+        </Link>
         <div className="feature-grid">
-          <article><span className="feature-index">01</span><strong>Outbound by design</strong><span>Your device connects out. No public management port required.</span></article>
-          <article><span className="feature-index">02</span><strong>Live operations</strong><span>See agent reachability and server health from one calm surface.</span></article>
-          <article><span className="feature-index">03</span><strong>Owner scoped</strong><span>Supabase Row Level Security keeps infrastructure private to you.</span></article>
+          <article>
+            <strong>Outbound agent</strong>
+            <span>Your device connects out; no router management port required.</span>
+          </article>
+          <article>
+            <strong>Real status</strong>
+            <span>Offline means the local agent is unreachable, never an optimistic fake.</span>
+          </article>
+          <article>
+            <strong>Isolated ownership</strong>
+            <span>Supabase RLS keeps every server and agent scoped to its owner.</span>
+          </article>
         </div>
-      </main>
+      </Landing>
     );
   }
 
-  const { data, error } = await supabase
-    .from("servers")
-    .select("id,name,minecraft_version,server_software,agent_id,created_at")
-    .order("created_at", { ascending: false });
-  const servers = (data ?? []) as ServerRow[];
+  const [{ data: serverRows, error }, { data: agentRows }] = await Promise.all([
+    supabase
+      .from("servers")
+      .select("id,name,minecraft_version,server_software,agent_id,status,runtime,created_at")
+      .order("created_at", { ascending: false }),
+    supabase.from("agents").select("id,name,last_seen_at"),
+  ]);
+
+  const servers: Server[] = Array.isArray(serverRows) ? serverRows : [];
+  const agents = new Map<string, Agent>(
+    (Array.isArray(agentRows) ? agentRows : []).map((agent) => [agent.id, agent as Agent]),
+  );
 
   return (
-    <main className="dashboard-shell">
+    <main>
       <header className="topbar">
-        <div className="brand-mark">MCL<span>•</span></div>
-        <div className="topbar-actions">
-          <span className="user-chip">{user.email ?? "Account"}</span>
-          <form action="/auth/signout" method="post"><button className="secondary" type="submit">Sign out</button></form>
+        <div>
+          <p className="eyebrow">MCL CONTROL PLANE</p>
+          <h1>Dashboard</h1>
         </div>
+        <form action="/auth/signout" method="post">
+          <button className="secondary">Sign out</button>
+        </form>
       </header>
 
-      <section className="dashboard-intro">
+      <section className="hero-panel">
         <div>
-          <p className="eyebrow">OVERVIEW / {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }).toUpperCase()}</p>
-          <h1>Good to see you.</h1>
-          <p className="subtitle">Your local infrastructure, in one place.</p>
+          <span className="status-pill">
+            <i /> Agent network
+          </span>
+          <h2>Run Minecraft on your own device.</h2>
+          <p>
+            Install the local Server Agent, register it here, and manage Paper, Geyser, Floodgate,
+            logs, backups, and safe commands from one place.
+          </p>
         </div>
-        <Link className="button-link" href="#connect-agent">Connect agent <span aria-hidden="true">↗</span></Link>
+        <Link className="button-link" href="/dashboard/agents">
+          Connect an agent
+        </Link>
       </section>
 
-      <section className="metric-grid" aria-label="Infrastructure summary">
-        <article className="metric-card"><span className="metric-label">SERVERS</span><strong>{servers.length}</strong><span className="metric-foot">registered environments</span></article>
-        <article className="metric-card"><span className="metric-label">AGENTS</span><strong>{new Set(servers.map((server) => server.agent_id)).size}</strong><span className="metric-foot">connected devices</span></article>
-        <article className="metric-card"><span className="metric-label">SECURITY</span><strong className="metric-status"><i /> RLS active</strong><span className="metric-foot">owner-scoped access</span></article>
+      <section className="section-heading">
+        <div>
+          <p className="eyebrow">YOUR INFRASTRUCTURE</p>
+          <h2>Servers</h2>
+        </div>
+        <Link className="button-link" href="/dashboard/servers/new">
+          New server
+        </Link>
       </section>
 
-      <section className="section-heading"><div><p className="eyebrow">YOUR INFRASTRUCTURE</p><h2>Servers</h2></div><Link className="text-link" href="#connect-agent">+ Add server</Link></section>
-      {error ? <div className="notice error" role="alert">Database is not ready yet: {error.message}</div> : null}
-      {servers.length > 0 ? <div className="server-grid">{servers.map((server) => <article className="server-card" key={server.id}><div className="card-heading"><div><span className="server-icon">MC</span><div><h3>{server.name}</h3><p>{server.server_software} · Minecraft {server.minecraft_version}</p></div></div><span className="status-pill muted"><i /> Awaiting agent</span></div><div className="card-stats"><span>Players <b>—</b></span><span>CPU <b>—</b></span><span>RAM <b>—</b></span></div><Link className="card-link" href="#connect-agent">Open server <span aria-hidden="true">→</span></Link></article>)}</div> : <div className="empty-state" id="connect-agent"><div className="empty-icon">+</div><div><h3>No servers yet</h3><p>Connect the agent on the device that runs Minecraft, then create your first server record.</p></div><Link className="button-link" href="#connect-agent">Connect first agent</Link></div>}
+      {error ? <div className="notice error">Database is not ready yet: {error.message}</div> : null}
+
+      {servers.length ? (
+        <div className="server-grid">
+          {servers.map((server) => {
+            const agent = agents.get(server.agent_id);
+            const reachable = isRecent(agent?.last_seen_at ?? null);
+            const runtime = server.runtime ?? {};
+            const online = reachable && server.status === "online";
+            const players =
+              typeof runtime.players_online === "number"
+                ? typeof runtime.players_max === "number"
+                  ? `${runtime.players_online} / ${runtime.players_max}`
+                  : String(runtime.players_online)
+                : "unknown";
+            return (
+              <article className="server-card" key={server.id}>
+                <div className="card-heading">
+                  <div>
+                    <h3>{server.name}</h3>
+                    <p>
+                      {server.server_software} &middot; Minecraft {server.minecraft_version}
+                      {agent ? ` · ${agent.name}` : ""}
+                    </p>
+                  </div>
+                  <span className={`status-pill${online ? "" : " muted"}`}>
+                    <i /> {(!reachable ? "No agent reporting" : server.status === "online" ? "Online" : server.status === "offline" ? "Offline" : server.status)}
+                  </span>
+                </div>
+                <div className="card-stats">
+                  <span>Players <b>{players}</b></span>
+                  <span>Agent seen <b>{agent?.last_seen_at ? new Date(agent.last_seen_at).toLocaleTimeString() : "never"}</b></span>
+                </div>
+                <Link href={`/dashboard/servers/${server.id}`}>Open server</Link>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="empty-state">
+          <h3>No servers yet</h3>
+          <p>Create a server record after connecting the agent that runs Minecraft on your device.</p>
+          <Link className="button-link" href="/dashboard/agents">
+            Connect your first agent
+          </Link>
+        </div>
+      )}
     </main>
   );
+}
+
+function isRecent(timestamp: string | null): boolean {
+  if (!timestamp) return false;
+  const seen = Date.parse(timestamp);
+  if (Number.isNaN(seen)) return false;
+  return Date.now() - seen < 90_000;
 }

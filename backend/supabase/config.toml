@@ -1,0 +1,73 @@
+# Supabase CLI configuration
+#
+#    cd backend
+#    supabase login
+#    supabase link --project-ref <your-project-ref>
+#    supabase db push
+#    supabase functions deploy agent-api --no-verify-jwt
+#
+# This file is required by every `supabase` command. Without it the CLI stops with
+# "config.toml not found, try running supabase init" -- which is why it is
+# committed rather than generated per developer.
+#
+# The migrations in `migrations/` are the schema. They are pushed, never applied
+# by hand, so a fresh environment and an existing one converge on the same shape.
+
+project_id = "cloud-vm"
+
+[api]
+# The panel talks to this over HTTPS from the browser and from the Edge Function.
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+# Port 54322 is the local Postgres the CLI proxies. 6543 is the connection pooler,
+# which is what `supabase db reset` and the seed script prefer.
+port = 54322
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+# Mail catcher, so confirmation and recovery emails can be read locally instead of
+# being delivered to a real address.
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+# Backups and worlds are deliberately not stored here: they stay on the machine
+# running the server. Nothing in this project uploads a world file.
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+# The dashboard is deployed to Vercel, so its own origin has to be an allowed
+# redirect or the OAuth callback lands on a URL the CLI rejects.
+additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+# Confirmations are on: an agent credential is issued against an account, and an
+# unconfirmed address is not an account worth issuing one to.
+enable_confirmations = true
+
+[functions.agent-api]
+# Agents do not hold a Supabase JWT. They present a device token digest and the
+# function authenticates them itself, so Supabase's own JWT gate must be off for
+# this one function. This is the only function in the project.
+verify_jwt = false
+# The agent sends a nonce, a timestamp and a JSON body on every call, so the body
+# limit only needs to clear a status report.
+import_map = {}
+entrypoint = "./functions/agent-api/index.ts"

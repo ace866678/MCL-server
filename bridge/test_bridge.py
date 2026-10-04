@@ -270,6 +270,52 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual([p["name"] for p in body["players"]], ["Steve", "Alex"])
 
+    def test_status_keeps_key_shape_without_rcon(self):
+        """
+        `/status` is a fixed shape, so every documented key is present even when
+        RCON cannot answer: the web client types playersMax as number | null, not
+        as optional.
+        """
+        import argparse
+        import tempfile
+
+        tmp = tempfile.mkdtemp(prefix="mc-norcon-")
+        os.makedirs(tmp + "/server")
+        # No max-players line at all, and a port nothing is listening on.
+        with open(tmp + "/server/server.properties", "w") as handle:
+            handle.write("motd=Test Server\nrcon.port=1\n")
+        with open(tmp + "/VERSION", "w") as handle:
+            handle.write("MINECRAFT_VERSION=26.2\n")
+
+        bridge_ = bridge.Bridge(
+            argparse.Namespace(
+                version_file=tmp + "/VERSION",
+                server_dir=tmp + "/server",
+                repo_root=tmp,
+                mc=tmp + "/fake-mc",
+                token="test-token",
+                verbose=False,
+                allow=["list"],
+                backup_timeout=10,
+                rcon_password=PASSWORD,
+            )
+        )
+        payload = bridge_.status()
+        for key in (
+            "running",
+            "pid",
+            "minecraftVersion",
+            "motd",
+            "playersOnline",
+            "playersMax",
+            "crossplay",
+            "rcon",
+        ):
+            self.assertIn(key, payload)
+        self.assertIsNone(payload["playersMax"])
+        self.assertIsNone(payload["playersOnline"])
+        self.assertTrue(payload["rcon"].startswith("error:"))
+
     def test_console_allowlisted(self):
         status, body = self.call("/console", "POST", {"command": "list"})
         self.assertEqual(status, 200)

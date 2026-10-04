@@ -9,6 +9,10 @@ Description=Minecraft HTTP bridge (status and player list for the web app)
 Documentation=file:/opt/minecraft/README.md
 After=network-online.target minecraft.service
 Wants=network-online.target
+# Rate limiting lives in [Unit], not [Service]. The bridge has no state worth
+# keeping, so never restart forever if it is broken.
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -27,9 +31,6 @@ ExecStart=/usr/bin/python3 /opt/minecraft/bridge/bridge.py
 
 Restart=always
 RestartSec=5
-# The bridge has no state worth keeping; never restart forever if it is broken.
-StartLimitBurst=5
-StartLimitIntervalSec=60
 
 NoNewPrivileges=true
 PrivateTmp=true

@@ -2,6 +2,10 @@
   "name": "minecraft-status",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "//": "Next 16 requires >=20.9. Declared so Vercel cannot pick an older runtime and fail the build with an unrelated-looking error.",
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

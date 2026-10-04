@@ -53,8 +53,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         Authorization: `Bearer ${token}`,
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
       },
-      // Status changes slowly; a cached response for a few seconds keeps a
-      // burst of visitors from hammering the bridge.
+      // State has to be current: the admin panel acts on it, and a cached
+      // "running" after a `mc stop` would be worse than no answer at all.
       cache: "no-store",
     });
     if (!response.ok) {

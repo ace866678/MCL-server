@@ -1,0 +1,73 @@
+# Unit file for the local Server Agent.
+#
+#   sudo install -m 644 systemd/mcl-agent.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now mcl-agent
+#
+# The agent holds no listening port and needs no inbound firewall rule: it makes
+# outbound HTTPS requests to the control plane. That is the whole reason hosting a
+# server here needs no port forwarding for *management*.
+#
+# Configuration comes from an environment file rather than from a unit-file
+# Environment= block, because the token is a credential and a unit file is world
+# readable. MCL_AGENT_CONFIG points at agent.json instead if you would rather keep
+# it in one file next to the code; either works, and the file mode is checked.
+
+[Unit]
+Description=Minecraft Server Agent
+Documentation=https://github.com/ace866678/MCL-server
+After=network-online.target
+Wants=network-online.target
+
+# Restart limiting lives in [Unit], not [Service]. Putting StartLimit* in
+# [Service] is silently ignored, which turns a machine with a wrong token into a
+# restart loop hammering the Edge Function. Five attempts in five minutes is
+# plenty for a crash loop and stops a misconfiguration.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=minecraft-agent
+Group=minecraft-agent
+WorkingDirectory=/opt/minecraft
+
+EnvironmentFile=/etc/mcl-agent.env
+
+# -u keeps stderr unbuffered, so a traceback reaches the journal immediately
+# rather than sitting in a buffer until the process exits.
+ExecStart=/usr/bin/python3 -u /opt/minecraft/agent/agent.py
+
+# There is deliberately no ExecStartPre=... check. A laptop that is asleep or off
+# a network would fail that check and refuse to start, which is the opposite of
+# what this unit is for. Run `python3 agent/agent.py check` by hand when you want
+# to know why the agent is not reporting.
+
+# The agent must survive a failure in one cycle, but not be restarted forever by a
+# bad token. Paired with the StartLimit* above.
+Restart=on-failure
+RestartSec=15
+
+# Stopping the agent does not stop any Minecraft server: those are spawned
+# detached and keep running. Give the process a moment to finish its in-flight
+# request so an in-progress command result is not lost.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# A weak hardening profile, chosen to be survivable by a plain Python process. The
+# agent needs to read its own code, write agent/data/, and spawn `mc` — so it
+# cannot be sandboxed much further than this without breaking the feature.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/minecraft/agent/data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

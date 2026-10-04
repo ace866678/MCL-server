@@ -25,9 +25,7 @@ import argparse
 import hmac
 import json
 import os
-import re
-import secrets
-import socket
+import pathlib
 import struct
 import subprocess
 import sys
@@ -35,155 +33,27 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # ---- RCON ------------------------------------------------------------------
-# Vanilla Minecraft RCON: length-prefixed, little-endian, null-terminated
-# payloads. Documented at minecraft.wiki/w/Java_Edition_protocol/RCon.
+# The protocol implementation is shared with the agent in lib/mcl_rcon.py, so the
+# status page and the dashboard read the player list through exactly the same
+# code. Names are re-exported here because the bridge's own tests and its callers
+# already refer to them unqualified.
 
-SERVERDATA_AUTH = 3
-SERVERDATA_AUTH_RESPONSE = 2
-SERVERDATA_RESPONSE_VALUE = 0
-SERVERDATA_SERVER_INFO = 0x04
-SERVERDATA_SERVER_LIST = 0x0B
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "lib"))
 
+from mcl_rcon import (  # noqa: E402
+    SERVERDATA_AUTH,
+    SERVERDATA_AUTH_RESPONSE,
+    SERVERDATA_RESPONSE_VALUE,
+    SERVERDATA_SERVER_INFO,
+    SERVERDATA_SERVER_LIST,
+    Rcon,
+    RconError,
+    parse_player_list,
+    parse_server_info,
+)
+
+# Kept under its original name: the bridge hard-codes this in its own timeouts.
 RCON_TIMEOUT = 5.0
-
-
-class RconError(Exception):
-    pass
-
-
-class Rcon:
-    def __init__(self, host, port, password):
-        self.host = host
-        self.port = port
-        self.password = password
-        self.request_id = 0
-
-    def _next_id(self):
-        # 0 is reserved for "no reply"; a random int avoids a stale packet on a
-        # reused socket being mistaken for this request's answer.
-        self.request_id = secrets.randbelow(2**31 - 1) + 1
-        return self.request_id
-
-    def _pack(self, packet_type, payload, request_id):
-        body = struct.pack("<ii", request_id, packet_type) + payload.encode("utf8") + b"\x00"
-        # The length field counts its own four bytes.
-        return struct.pack("<i", len(body) + 4) + body
-
-    def _read_packet(self, sock):
-        header = self._read_exactly(sock, 4)
-        (length,) = struct.unpack("<i", header)
-        # The length field counts itself, so the body is 4 bytes shorter, and a
-        # body has to hold at least a request id and a type.
-        if length < 13 or length > 4096:
-            raise RconError(f"implausible packet length {length}")
-        body = self._read_exactly(sock, length - 4)
-        if len(body) < 8:
-            raise RconError("truncated packet from the server")
-        return body
-
-    @staticmethod
-    def _read_exactly(sock, count):
-        chunks = b""
-        while len(chunks) < count:
-            block = sock.recv(count - len(chunks))
-            if not block:
-                raise RconError("connection closed by the server")
-            chunks += block
-        return chunks
-
-    def _connect(self):
-        try:
-            sock = socket.create_connection((self.host, self.port), timeout=RCON_TIMEOUT)
-        except OSError as exc:
-            raise RconError(f"cannot reach RCON on {self.host}:{self.port}: {exc}") from exc
-        sock.settimeout(RCON_TIMEOUT)
-        return sock
-
-    def _send(self, sock, packet_type, payload=""):
-        request_id = self._next_id()
-        sock.sendall(self._pack(packet_type, payload, request_id))
-        return request_id
-
-    def _receive(self, sock):
-        body = self._read_packet(sock)
-        request_id, packet_type = struct.unpack("<ii", body[:8])
-        value = body[8:].decode("utf8", "replace").rstrip("\x00")
-        return request_id, packet_type, value
-
-    def command(self, packet_type, payload=""):
-        """
-        Send one packet and return its reply.
-
-        Servers answer a successful AUTH with an AUTH_RESPONSE *and* an empty
-        RESPONSE_VALUE, and that empty packet can arrive after the command we
-        sent next. So replies are matched on request id and anything else is
-        discarded, rather than assuming the packet order.
-        """
-        with self._connect() as sock:
-            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-
-            self._send(sock, SERVERDATA_AUTH, self.password)
-            while True:
-                request_id, response_type, value = self._receive(sock)
-                if response_type == SERVERDATA_AUTH_RESPONSE:
-                    if request_id == -1:
-                        raise RconError("RCON authentication failed (bad password)")
-                    break
-                if "wrong" in value.lower():
-                    raise RconError("RCON authentication failed (bad password)")
-
-            wanted = self._send(sock, packet_type, payload)
-            while True:
-                request_id, response_type, value = self._receive(sock)
-                if request_id == wanted and response_type == SERVERDATA_RESPONSE_VALUE:
-                    return value
-
-
-def parse_server_info(raw):
-    """
-    Pull the interesting fields out of SERVERDATA_SERVER_INFO.
-
-    Field order is not consistent between implementations -- vanilla puts the
-    protocol version first, others put the MOTD there -- so locate the numeric
-    player pair rather than trusting an index.
-    """
-    if isinstance(raw, (bytes, bytearray)):
-        raw = bytes(raw).decode("utf8", "replace")
-    fields = [f for f in raw.split("\x00")]
-    fields = [f for f in fields if f != ""]
-
-    numbers = []
-    for index, field in enumerate(fields):
-        if re.fullmatch(r"\d{1,6}", field):
-            numbers.append((index, int(field)))
-
-    online = maximum = None
-    for position in range(len(numbers) - 1):
-        (first_index, first), (_, second) = numbers[position], numbers[position + 1]
-        # numplayers then maxplayers, adjacent in the field list
-        if first_index + 1 == numbers[position + 1][0] and second >= first:
-            online, maximum = first, second
-            break
-
-    # The MOTD is the first field that is not one of the numbers.
-    motd = next((f for f in fields if not re.fullmatch(r"\d{1,6}", f)), None)
-
-    return {"motd": motd, "playersOnline": online, "playersMax": maximum}
-
-
-def parse_player_list(raw):
-    """SERVERDATA_SERVER_LIST returns `name\\ip\\id` per line, empty when idle."""
-    if isinstance(raw, (bytes, bytearray)):
-        raw = bytes(raw).decode("utf8", "replace")
-
-    # Each entry is name\ip\id, with entries separated by a newline -- though some
-    # builds pack them into one string separated by NULs instead. Split on every
-    # separator, then decide which shape we are looking at.
-    fields = [f for f in re.split(r"[\\\n\x00]", raw) if f.strip()]
-
-    if len(fields) >= 3 and len(fields) % 3 == 0:
-        return [{"name": fields[index]} for index in range(0, len(fields), 3)]
-    return [{"name": field} for field in fields]
 
 
 # ---- config ----------------------------------------------------------------
@@ -284,8 +154,6 @@ class Bridge:
             "crossplay": True,
             "rcon": "unknown",
         }
-        if payload["playersMax"] is None:
-            payload.pop("playersMax")
 
         if not self.password:
             payload["rcon"] = "no password configured"
