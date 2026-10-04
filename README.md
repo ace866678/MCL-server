@@ -309,13 +309,23 @@ supabase db push                                        # schema first
 supabase functions deploy agent-api --no-verify-jwt      # then the function
 ```
 
-Then set on the Vercel project:
+Then set on the Vercel project. **Root Directory must be `web`** (Settings → Build and
+Deployment). It is a dashboard setting, not a `vercel.json` key: `rootDirectory` is not part of
+the [vercel.json schema](https://openapi.vercel.sh/vercel.json), so putting it in the file has no
+effect and the build would run from the repository root, where `npm ci` cannot resolve a lockfile.
+Set it in the dashboard, and `web/vercel.json` is picked up automatically.
 
 | Variable | Purpose |
 | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | your project URL, e.g. `https://abc.supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | anon key, used from the browser |
-| `SUPABASE_SERVICE_ROLE_KEY` | service-role key, used by the Edge Function. **Server-only** — never prefix this with `NEXT_PUBLIC_` |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | anon/publishable key, used from the browser |
+
+The service-role key is **not** a Vercel variable — no app code reads it. It belongs to the Edge
+Function, which defaults it to an empty string and then fails every request:
+
+```bash
+supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<service-role key>
+```
 
 Full details, including the header contract and the reasoning behind digest-only
 credentials, are in [`backend/README.md`](backend/README.md).
@@ -400,7 +410,7 @@ Vercel (Next.js, web/)  ──HTTPS──▶  tunnel  ──▶  bridge (bridge/
 
 `mc deploy` already enables RCON on loopback, writes the secrets to `/etc/minecraft-bridge.env`
 (mode 600) and installs `minecraft-bridge.service`. Expose the bridge with a tunnel, then set the
-variables below and point the Vercel project's root directory at `web`:
+variables below and make sure the Vercel project's Root Directory is `web`:
 
 | Variable | Where it comes from |
 | --- | --- |

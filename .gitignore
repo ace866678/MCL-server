@@ -1,38 +1,102 @@
-# Runtime server directory: worlds, player data, logs, generated configs.
+# =============================================================================
+# Nothing in this list is ever committed.
+#
+# Two rules behind it:
+#
+# 1. Runtime state never goes in git. Worlds, player data, plugin jars, generated
+#    configs and logs are produced on a player's machine, and a world is tens of
+#    gigabytes of somebody else's work.
+# 2. Credentials never go in git. Not encrypted, not "just this once". A secret
+#    that reaches a remote can be assumed leaked, and rewriting history does not
+#    un-clone a repository.
+#
+# Each rule below is tested by agent/tests/test_gitignore.py, so a pattern that
+# stops working is a failing test rather than a leak.
+# =============================================================================
+
+# ---- Runtime state ----------------------------------------------------------
+#
+# The server directory for a checkout at the repository root.
 /server/
+
+# A server started by the agent, wherever the operator put it. The agent's own
+# data directory holds worlds, player data, plugin jars, generated configs, the
+# per-server RCON password and the agent's logs.
+/agent/data/
+/agent/logs/
 
 # Backups produced by `mc backup`.
 /backups/
 
-# Local overrides for heap size and JVM flags. Never commit this — it is
-# per-machine.
+# Per-machine heap overrides. Written by the agent from the dashboard's memory
+# settings, or edited by hand.
 /server.env
 
-# Console FIFO and pid file, both live inside /server but are called out here
-# so an accidental `git add -f` is obvious.
+# Console FIFO and pid file. Both live inside /server but are called out so an
+# accidental `git add -f` is obvious.
 *.pid
 *.fifo
 
-*.log
-.DS_Store
-
-# Python bytecode from running the bridge, the agent and their tests.
-__pycache__/
-*.py[cod]
-
-# ---- Agent ------------------------------------------------------------------
+# ---- Credentials ------------------------------------------------------------
 #
-# agent/agent.json holds the one-time agent token. It is a credential that grants
-# control of the machine the agent runs on, so it is never committed -- not even
-# encrypted. The dashboard shows it once; copy it into this file locally.
+# /agent/agent.json holds the one-time agent token. It is a credential that
+# grants control of the machine the agent runs on.
 /agent/agent.json
 
-# Everything the agent creates at runtime, per server: worlds, player data,
-# plugin jars, generated configs, logs, generated RCON passwords and the
-# agent's own log files.
-/agent/data/
-/agent/logs/
+# Environment files. `.env.example` is deliberately re-included below, because a
+# committed example is documentation, not a secret.
+.env
+.env.*
+!.env.example
+!.env.*.example
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+
+# Keys and certificates. Private key formats only -- a `.crt` is often committed
+# on purpose as part of a public certificate chain.
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.truststore
+*.asc
+*.gpg
+*.kdbx
+id_rsa
+id_rsa.*
+id_ecdsa
+id_ecdsa.*
+id_ed25519
+id_ed25519.*
+id_dsa
+id_dsa.*
 
 # A tunnel provider's claim token, if an operator keeps one here rather than in
 # agent.json. Belt and braces: agent.json is ignored, but so is a stray copy.
 *.claim-token
+
+# ---- Build artefacts --------------------------------------------------------
+#
+# Minecraft itself, Paper, Geyser and Floodgate are not redistributed here;
+# `mc install` fetches them at pinned, checksum-verified versions. The same goes
+# for plugin jars an operator drops in. A jar in this repository is always
+# either a mistake or something that should have been fetched, never source.
+*.jar
+*.war
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
+# ---- Noise ------------------------------------------------------------------
+*.log
+.DS_Store
+Thumbs.db
+
+# Python bytecode from running the bridge, the agent and their tests.
+__pycache__/
+*.py[cod]
