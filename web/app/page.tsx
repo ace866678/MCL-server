@@ -129,9 +129,6 @@ export default async function Home() {
         <div className="server-grid">
           {servers.map((server) => {
             const agent = agents.get(server.agent_id);
-            // A stale agent makes the reported status meaningless, so the card
-            // says "no agent reporting" rather than repeating a status that was
-            // measured minutes ago and may no longer be true.
             const reachable = isRecent(agent?.last_seen_at ?? null);
             const runtime = server.runtime ?? {};
             const online = reachable && server.status === "online";
@@ -152,28 +149,12 @@ export default async function Home() {
                     </p>
                   </div>
                   <span className={`status-pill${online ? "" : " muted"}`}>
-                    <i />{" "}
-                    {!reachable
-                      ? "No agent reporting"
-                      : server.status === "online"
-                        ? "Online"
-                        : server.status === "offline"
-                          ? "Offline"
-                          : server.status}
+                    <i /> {(!reachable ? "No agent reporting" : server.status === "online" ? "Online" : server.status === "offline" ? "Offline" : server.status)}
                   </span>
                 </div>
                 <div className="card-stats">
-                  <span>
-                    Players <b>{players}</b>
-                  </span>
-                  <span>
-                    Agent seen{" "}
-                    <b>
-                      {agent?.last_seen_at
-                        ? new Date(agent.last_seen_at).toLocaleTimeString()
-                        : "never"}
-                    </b>
-                  </span>
+                  <span>Players <b>{players}</b></span>
+                  <span>Agent seen <b>{agent?.last_seen_at ? new Date(agent.last_seen_at).toLocaleTimeString() : "never"}</b></span>
                 </div>
                 <Link href={`/dashboard/servers/${server.id}`}>Open server</Link>
               </article>
@@ -183,9 +164,7 @@ export default async function Home() {
       ) : (
         <div className="empty-state">
           <h3>No servers yet</h3>
-          <p>
-            Create a server record after connecting the agent that runs Minecraft on your device.
-          </p>
+          <p>Create a server record after connecting the agent that runs Minecraft on your device.</p>
           <Link className="button-link" href="/dashboard/agents">
             Connect your first agent
           </Link>
@@ -195,13 +174,6 @@ export default async function Home() {
   );
 }
 
-/**
- * Whether an agent's last heartbeat is recent enough to trust.
- *
- * A server's reported status is only meaningful while the agent that reported it
- * is still around. Three heartbeat windows: enough to ride out one dropped poll,
- * tight enough that a closed laptop does not keep showing "Online".
- */
 function isRecent(timestamp: string | null): boolean {
   if (!timestamp) return false;
   const seen = Date.parse(timestamp);
