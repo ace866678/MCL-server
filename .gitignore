@@ -16,6 +16,11 @@
 *.log
 .DS_Store
 
+# Local environment files may contain database credentials and bridge tokens.
+.env
+.env.*
+!.env.example
+
 # Python bytecode from running the bridge, the agent and their tests.
 __pycache__/
 *.py[cod]

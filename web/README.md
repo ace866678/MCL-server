@@ -33,7 +33,7 @@ Get the bridge token from the VM with `sudo cat /etc/minecraft-bridge.env`.
 
 Every route is `force-dynamic`, so each request re-reads the session. A missing Supabase
 configuration renders the "being provisioned" landing page rather than throwing, and a dead bridge
-says so instead of failing the page. Apply `supabase/schema.sql` before the first sign-in.
+says so instead of failing the page. Apply the migrations in `../backend/supabase/migrations/` before the first sign-in.
 
 ## Local development
 
