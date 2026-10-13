@@ -37,3 +37,31 @@ code{background:#0b1018;border:1px solid var(--border);border-radius:.25rem;padd
 
 .subtitle{color:var(--muted);font-size:.85rem;margin:.35rem 0 0}
 .link-button{background:none;color:var(--accent);font-weight:600;padding:.4rem 0;text-decoration:underline;text-underline-offset:.2rem}
+
+
+/* Minecraft-style console for the safe, client-only demo route. */
+.console-section-heading{align-items:center;margin-bottom:.75rem}
+.minecraft-console{overflow:hidden;border:1px solid #2a3749;border-radius:.85rem;background:#070b10;box-shadow:0 14px 38px #0003}
+.minecraft-console-toolbar{display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap;padding:.7rem .9rem;border-bottom:1px solid #243044;background:#111823;color:#cbd5e1;font-size:.78rem;font-weight:700}
+.console-indicator{display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:#8ee6bd;box-shadow:0 0 0 .2rem #8ee6bd20;margin-right:.5rem}
+.console-divider{color:#526176;padding:0 .35rem}
+.console-clear{border:1px solid #344154;background:#192332;color:#cbd5e1;padding:.35rem .6rem;font-size:.72rem;border-radius:.45rem}
+.console-clear:hover{background:#263449}
+.minecraft-console-output{height:min(27rem,55vh);min-height:16rem;overflow:auto;padding:1rem;background:#080c11;color:#d5deea;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;scrollbar-color:#344154 #080c11}
+.minecraft-console-line{font-size:.77rem;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere}
+.console-time{color:#64748b}
+.console-level{font-weight:800}
+.console-level-info{color:#8ee6bd}
+.console-level-warn{color:#fbbf24}
+.console-level-player{color:#93c5fd}
+.console-command{color:#a7f3d0;font-weight:700}
+.console-empty{font-size:.8rem;color:#94a3b8;margin:0}
+.minecraft-console-form{display:flex;align-items:center;gap:.7rem;flex-wrap:nowrap;padding:.75rem .85rem;background:#111823;border-top:1px solid #243044}
+.minecraft-console-form .console-prompt{flex:0 0 auto;color:#8ee6bd;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-weight:900}
+.minecraft-console-form input{flex:1 1 auto!important;width:0;min-width:0!important;background:#080c11!important;border-color:#344154!important;color:#edf2f7!important;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace!important;font-size:.82rem!important}
+.minecraft-console-form input::placeholder{color:#64748b}
+.minecraft-console-form button{flex:0 0 auto;font-size:.78rem;padding:.65rem .8rem}
+.console-quick-commands{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;margin-top:.8rem}
+.console-quick-commands>span{color:var(--muted);font-size:.8rem;margin-right:.15rem}
+.console-quick-commands button{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:.75rem;padding:.4rem .65rem;border-radius:.45rem}
+@media(max-width:620px){.minecraft-console-output{height:23rem;min-height:12rem;padding:.75rem}.minecraft-console-form{flex-wrap:wrap}.minecraft-console-form input{flex-basis:calc(100% - 2rem)!important}.minecraft-console-form button{flex:1 1 100%;width:100%}.console-section-heading{align-items:flex-start;flex-direction:column}}
