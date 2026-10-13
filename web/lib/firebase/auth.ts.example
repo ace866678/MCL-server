@@ -1,0 +1,28 @@
+"use client";
+
+// Rename to auth.ts after installing Firebase and activating client.ts.example.
+
+import {
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signOut,
+  type UserCredential,
+} from "firebase/auth";
+import { getFirebaseClient } from "./client";
+
+export function registerWithEmail(email: string, password: string): Promise<UserCredential> {
+  return createUserWithEmailAndPassword(getFirebaseClient().auth, email.trim(), password);
+}
+
+export function signInWithEmail(email: string, password: string): Promise<UserCredential> {
+  return signInWithEmailAndPassword(getFirebaseClient().auth, email.trim(), password);
+}
+
+export function sendPasswordReset(email: string): Promise<void> {
+  return sendPasswordResetEmail(getFirebaseClient().auth, email.trim());
+}
+
+export function signOutFirebase(): Promise<void> {
+  return signOut(getFirebaseClient().auth);
+}
