@@ -467,6 +467,12 @@ data directories.
 Minecraft itself, Paper, Geyser and Floodgate are not redistributed here. `mc install` fetches
 them at the pinned, checksum-verified versions.
 
+## Firebase starter (future integration)
+
+Firebase files are prepared for later setup, but the app has **not** been migrated: the existing account/session and Minecraft-agent backend still use Supabase. The browser-only console demo is at `/demo` and never sends commands to a real server.
+
+Read [docs/FIREBASE_INTEGRATION.md](docs/FIREBASE_INTEGRATION.md) before adding Firebase credentials or enabling the migration. The initial Firestore rules deliberately keep server writes, agent data, and command queues closed until a trusted backend and ownership checks are implemented.
+
 ## Tests
 
 ```bash
