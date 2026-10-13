@@ -39,7 +39,7 @@ export function getFirebasePublicConfig(): FirebasePublicConfig | null {
 
   if (missing.length) {
     throw new Error(
-      \`Firebase configuration is incomplete. Missing: \${missing.join(", ")}.\`,
+      "Firebase configuration is incomplete. Missing: " + missing.join(", ") + ".",
     );
   }
 
