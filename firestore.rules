@@ -1,0 +1,71 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsUser(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    // Public-facing profile metadata only. Do not store passwords, agent tokens,
+    // RCON secrets, bridge tokens, service keys, or other credentials here.
+    match /users/{userId} {
+      allow read: if ownsUser(userId);
+
+      allow create: if ownsUser(userId)
+        && request.resource.data.keys().hasOnly([
+          'displayName', 'photoURL', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'displayName', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 80
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if ownsUser(userId)
+        && request.resource.data.keys().hasOnly([
+          'displayName', 'photoURL', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'displayName', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 80
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if false;
+    }
+
+    // Server records may be read by their owner after a trusted backend creates
+    // them. Client-side create/update/delete remain disabled until the final
+    // ownership and command-validation model is implemented.
+    match /servers/{serverId} {
+      allow read: if signedIn() && resource.data.ownerUid == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Agent credentials, queued commands, heartbeats, audit events, and runtime
+    // status must be written by a trusted backend, never directly from browsers.
+    match /agents/{agentId} {
+      allow read, write: if false;
+    }
+    match /commands/{commandId} {
+      allow read, write: if false;
+    }
+    match /events/{eventId} {
+      allow read, write: if false;
+    }
+
+    // Deny everything not explicitly opened above, including unplanned
+    // collections and all nested subcollections.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
