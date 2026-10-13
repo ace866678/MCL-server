@@ -1,0 +1,37 @@
+"use client";
+
+// Rename to firestore.ts after installing Firebase and activating client.ts.example.
+// Firestore rules remain authoritative; the uid filter does not replace security rules.
+
+import { collection, getDocs, query, where, type DocumentData } from "firebase/firestore";
+import { getFirebaseClient } from "./client";
+
+export type OwnedServerSummary = {
+  id: string;
+  ownerUid: string;
+  name: string;
+  minecraftVersion?: string;
+  software?: string;
+};
+
+export async function listOwnedServers(uid: string): Promise<OwnedServerSummary[]> {
+  if (!uid) throw new Error("A signed-in Firebase user is required.");
+
+  const { db } = getFirebaseClient();
+  const ownedServers = query(
+    collection(db, "servers"),
+    where("ownerUid", "==", uid),
+  );
+  const snapshot = await getDocs(ownedServers);
+
+  return snapshot.docs.map((server) => {
+    const data = server.data() as DocumentData;
+    return {
+      id: server.id,
+      ownerUid: String(data.ownerUid ?? ""),
+      name: String(data.name ?? "Unnamed server"),
+      ...(typeof data.minecraftVersion === "string" ? { minecraftVersion: data.minecraftVersion } : {}),
+      ...(typeof data.software === "string" ? { software: data.software } : {}),
+    };
+  });
+}
