@@ -29,11 +29,29 @@ export default async function Home() {
   if (!supabaseConfigured()) {
     return (
       <Landing>
-        <h1>Supabase connection is being provisioned.</h1>
+        <h1>Authentication isn't connected yet.</h1>
         <p className="hero-copy">
-          The control plane is ready, but the connected Supabase environment is not available to
-          this preview process yet.
+          You can explore the MCL control panel using fictional sample data while you set up Firebase
+          or another authentication provider. Demo mode is isolated from real Minecraft servers.
         </p>
+        <div className="button-row">
+          <Link className="button-link" href="/demo">Explore read-only demo</Link>
+          <Link className="button-link secondary" href="/login">Login setup</Link>
+        </div>
+        <div className="feature-grid">
+          <article>
+            <strong>Safe to explore</strong>
+            <span>Demo buttons only update sample UI state. They never send commands to a server.</span>
+          </article>
+          <article>
+            <strong>Sample data only</strong>
+            <span>Player counts, agents, and activity are fictional and are not saved.</span>
+          </article>
+          <article>
+            <strong>Connect auth later</strong>
+            <span>Real accounts and server controls remain unavailable until authentication and the backend are configured.</span>
+          </article>
+        </div>
       </Landing>
     );
   }
@@ -51,9 +69,10 @@ export default async function Home() {
           A secure Vercel control panel for Minecraft servers running locally on Windows or Linux.
           No paid VM required.
         </p>
-        <Link className="button-link" href="/login">
-          Sign in to continue
-        </Link>
+        <div className="button-row">
+          <Link className="button-link" href="/login">Sign in to continue</Link>
+          <Link className="button-link secondary" href="/demo">Explore read-only demo</Link>
+        </div>
         <div className="feature-grid">
           <article>
             <strong>Outbound agent</strong>
@@ -108,9 +127,7 @@ export default async function Home() {
             logs, backups, and safe commands from one place.
           </p>
         </div>
-        <Link className="button-link" href="/dashboard/agents">
-          Connect an agent
-        </Link>
+        <Link className="button-link" href="/dashboard/agents">Connect an agent</Link>
       </section>
 
       <section className="section-heading">
@@ -118,9 +135,7 @@ export default async function Home() {
           <p className="eyebrow">YOUR INFRASTRUCTURE</p>
           <h2>Servers</h2>
         </div>
-        <Link className="button-link" href="/dashboard/servers/new">
-          New server
-        </Link>
+        <Link className="button-link" href="/dashboard/servers/new">New server</Link>
       </section>
 
       {error ? <div className="notice error">Database is not ready yet: {error.message}</div> : null}
@@ -165,9 +180,7 @@ export default async function Home() {
         <div className="empty-state">
           <h3>No servers yet</h3>
           <p>Create a server record after connecting the agent that runs Minecraft on your device.</p>
-          <Link className="button-link" href="/dashboard/agents">
-            Connect your first agent
-          </Link>
+          <Link className="button-link" href="/dashboard/agents">Connect your first agent</Link>
         </div>
       )}
     </main>
