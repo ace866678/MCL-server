@@ -2,16 +2,37 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MCL Control Plane",
-  description: "Securely manage Minecraft servers running on your own Windows or Linux device.",
+  metadataBase: new URL("https://mcl-server.vercel.app"),
+  title: {
+    default: "MCL Server — Minecraft Server Management",
+    template: "%s | MCL Server",
+  },
+  description:
+    "Manage your Minecraft server from a clear control panel. Configure server settings, monitor status, and manage your own server environment.",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    url: "https://mcl-server.vercel.app/",
+    siteName: "MCL Server",
+    title: "MCL Server — Minecraft Server Management",
+    description:
+      "Manage your Minecraft server from a clear control panel. Configure server settings and monitor your server environment.",
+  },
+  twitter: {
+    card: "summary",
+    title: "MCL Server — Minecraft Server Management",
+    description:
+      "Manage your Minecraft server from a clear control panel and monitor your server environment.",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
-        {/* A div, not a <main>: each route renders its own <main>, and a
-            document may only have one. `.page` carries the same layout. */}
+        {/* Each route renders its own main element. */}
         <div className="page">{children}</div>
       </body>
     </html>
